@@ -12,6 +12,7 @@ from .discord_commander import DiscordCommander
 from .position_monitor import PositionMonitor, AlertLevel, PositionAlert
 from .performance_monitor import PerformanceMonitor
 from src.binance_sdk import BinanceFuturesClient
+from risk.risks import RiskManager, AccountStatus
 from util.utils import load_config, setup_logging
 
 
@@ -41,6 +42,7 @@ class MonitoringSystem:
         
         # Initialize components
         self.exchange_client = None
+        self.risk_manager = None
         self.discord_notifier = None
         self.discord_commander = None
         self.position_monitor = None
@@ -100,14 +102,19 @@ class MonitoringSystem:
         """Set exchange client for monitoring."""
         self.exchange_client = exchange_client
         
-        # Initialize position monitor with exchange client
+        # Initialize components with exchange client
         if self.exchange_client:
+            # Initialize position monitor with exchange client
             self.position_monitor = PositionMonitor(
                 exchange_client=exchange_client,
                 alert_callback=self._handle_position_alert,
                 monitoring_interval=self.config.monitoring_interval
             )
             self.logger.info("Position monitor initialized with exchange client")
+            
+            # Initialize risk manager (will be populated with data during monitoring)
+            self.risk_manager = None  # Will be initialized when we get account data
+            self.logger.info("Risk manager placeholder initialized")
             
     def start_monitoring(self):
         """Start the monitoring system."""
@@ -120,6 +127,9 @@ class MonitoringSystem:
             return
             
         self.is_running = True
+        
+        # Initialize RiskManager with current account data
+        self._initialize_risk_manager()
         
         # Start position monitoring
         if self.position_monitor:
@@ -161,8 +171,12 @@ class MonitoringSystem:
                 if self.config.auto_reports_enabled:
                     self._check_automated_reports()
                     
-                # Check system health
+                # Check system health (including RiskManager health)
                 self._check_system_health()
+                
+                # Refresh RiskManager with latest data periodically
+                if self.risk_manager:
+                    self._initialize_risk_manager()
                 
                 time.sleep(self.config.monitoring_interval)
                 
@@ -234,6 +248,245 @@ Unrealized P&L: ${position_summary['total_pnl']:.2f}"""
         except Exception as e:
             self.logger.error(f"Error sending automated report: {e}")
             
+    def _initialize_risk_manager(self):
+        """Initialize RiskManager with current account data."""
+        if not self.exchange_client:
+            return False
+            
+        try:
+            # Get current account data
+            account_data = self.exchange_client.get_account_info()
+            
+            # Initialize RiskManager with account data
+            self.risk_manager = RiskManager(account_data)
+            
+            self.logger.info("RiskManager initialized with current account data")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error initializing RiskManager: {e}")
+            return False
+    
+    def get_accounts_summary(self):
+        """Get accounts summary using RiskManager."""
+        if not self.exchange_client or not self.risk_manager:
+            return None
+            
+        try:
+            # Get current data
+            balance_data = self.exchange_client.get_balances()
+            positions_data = self.exchange_client.get_positions()
+            
+            # Use RiskManager to generate summary
+            accounts_summary = self.risk_manager.get_accounts_summary(balance_data, positions_data)
+            
+            return accounts_summary
+            
+        except Exception as e:
+            self.logger.error(f"Error getting accounts summary: {e}")
+            return None
+    
+    def get_positions_summary(self):
+        """Get positions summary using RiskManager."""
+        if not self.exchange_client or not self.risk_manager:
+            return None
+            
+        try:
+            # Get current positions data
+            positions_data = self.exchange_client.get_positions()
+            
+            # Use RiskManager to generate summary
+            positions_summary = self.risk_manager.get_positions_summary(positions_data)
+            
+            return positions_summary
+            
+        except Exception as e:
+            self.logger.error(f"Error getting positions summary: {e}")
+            return None
+    
+    def get_performance_summary(self):
+        """Get performance summary using PerformanceMonitor."""
+        if not self.performance_monitor:
+            return None
+            
+        try:
+            # Get performance metrics for last 24 hours
+            end_time = datetime.now()
+            start_time = end_time - timedelta(hours=24)
+            
+            metrics = self.performance_monitor.get_performance_metrics(start_time, end_time)
+            
+            return {
+                'period': 'Last 24 Hours',
+                'total_trades': metrics.total_trades,
+                'win_rate': metrics.win_rate,
+                'net_pnl': metrics.net_pnl,
+                'total_fees': metrics.total_fees,
+                'profit_factor': metrics.profit_factor,
+                'best_trade': metrics.best_trade,
+                'worst_trade': metrics.worst_trade,
+                'max_drawdown': metrics.max_drawdown
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error getting performance summary: {e}")
+            return None
+    
+    def _format_accounts_summary(self, accounts_data: list) -> str:
+        """Format accounts data into Discord table format."""
+        if not accounts_data:
+            return "Accounts:\nNo account data available"
+        
+        total_account_value = sum(acc.get('account_value', 0) for acc in accounts_data)
+        total_position_value = sum(acc.get('position_value', 0) for acc in accounts_data)
+        total_available = sum(acc.get('available_balance', 0) for acc in accounts_data)
+        
+        # Calculate weighted leverage
+        weighted_leverage = 0
+        total_margin = 0
+        for acc in accounts_data:
+            margin = acc.get('position_value', 0) / acc.get('leverage', 1) if acc.get('leverage', 1) > 0 else 0
+            weighted_leverage += acc.get('leverage', 1) * margin
+            total_margin += margin
+        
+        avg_leverage = weighted_leverage / total_margin if total_margin > 0 else 0
+        
+        content = "Accounts:\n"
+        content += "exchange    | account_value | position_value | leverage | available_balance\n"
+        content += "---------------------------------------------------------------------------\n"
+        
+        for acc in accounts_data:
+            exchange = acc.get('exchange', '').ljust(12)
+            account_val = f"{acc.get('account_value', 0):>10,.2f}"
+            position_val = f"{acc.get('position_value', 0):>13,.2f}"
+            leverage = f"{acc.get('leverage', 0):>7,.2f}"
+            available = f"{acc.get('available_balance', 0):>15,.2f}"
+            content += f"{exchange} | {account_val} | {position_val} | {leverage} | {available}\n"
+        
+        content += "---------------------------------------------------------------------------\n"
+        content += f"{'TOTAL':>12} | {total_account_value:>10,.2f} | {total_position_value:>13,.2f} | {avg_leverage:>7,.2f} | {total_available:>15,.2f}"
+        
+        return content
+    
+    def send_accounts_summary(self):
+        """Send accounts summary to Discord using RiskManager data."""
+        if not self.discord_notifier:
+            self.logger.warning("Discord notifier not available")
+            return False
+            
+        try:
+            accounts_summary = self.get_accounts_summary()
+            if not accounts_summary:
+                self.logger.warning("Could not generate accounts summary")
+                return False
+                
+            # Format the data
+            formatted_content = self._format_accounts_summary([accounts_summary])
+            
+            # Send using Discord notifier
+            self.discord_notifier.send_accounts_summary(formatted_content)
+            
+            self.logger.info("Accounts summary sent to Discord")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error sending accounts summary: {e}")
+            return False
+    
+    def _format_positions_summary(self, positions_data: dict) -> str:
+        """Format positions data into Discord table format."""
+        positions = positions_data.get('positions', {})
+        
+        if not positions:
+            return "Positions:\nNo active positions"
+        
+        total_pnl = sum(pos.get('unrealized_pnl', 0) for pos in positions.values())
+        total_pnl_pct = sum(pos.get('pnl_percentage', 0) for pos in positions.values()) / len(positions) if positions else 0
+        
+        content = "Positions:\n"
+        content += "symbol      | side | quantity  | entry_price | current_price | pnl  | pnl_pct\n"
+        content += "---------------------------------------------------------------------------\n"
+        
+        for symbol, pos in positions.items():
+            symbol_name = symbol.ljust(12)
+            side = pos.get('side', '').ljust(4)
+            quantity = f"{pos.get('quantity', 0):>9,.4f}"
+            entry_price = f"{pos.get('entry_price', 0):>11,.4f}"
+            current_price = f"{pos.get('mark_price', 0):>13,.4f}"
+            pnl = f"{pos.get('unrealized_pnl', 0):>4,.2f}"
+            pnl_pct = f"{pos.get('pnl_percentage', 0):>7,.2f}%"
+            content += f"{symbol_name} | {side} | {quantity} | {entry_price} | {current_price} | {pnl} | {pnl_pct}\n"
+        
+        content += "---------------------------------------------------------------------------\n"
+        content += f"{'TOTAL':>12} | {'':4} | {'':9} | {'':11} | {'':13} | {total_pnl:>4,.2f} | {total_pnl_pct:>7,.2f}%"
+        
+        return content
+    
+    def send_positions_summary(self):
+        """Send positions summary to Discord using RiskManager data."""
+        if not self.discord_notifier:
+            self.logger.warning("Discord notifier not available")
+            return False
+            
+        try:
+            positions_summary = self.get_positions_summary()
+            if not positions_summary:
+                self.logger.warning("Could not generate positions summary")
+                return False
+                
+            # Format the data
+            formatted_content = self._format_positions_summary(positions_summary)
+            
+            # Send using Discord notifier
+            self.discord_notifier.send_positions_summary(formatted_content)
+            
+            self.logger.info("Positions summary sent to Discord")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error sending positions summary: {e}")
+            return False
+    
+    def _format_performance_summary(self, performance_data: dict) -> str:
+        """Format performance data into Discord summary format."""
+        content = "Performance Summary:\n"
+        content += f"Period: {performance_data.get('period', 'Last 24 Hours')}\n"
+        content += f"Total Trades: {performance_data.get('total_trades', 0)}\n"
+        content += f"Win Rate: {performance_data.get('win_rate', 0):.1f}%\n"
+        content += f"Net P&L: ${performance_data.get('net_pnl', 0):.2f}\n"
+        content += f"Total Fees: ${performance_data.get('total_fees', 0):.2f}\n"
+        content += f"Profit Factor: {performance_data.get('profit_factor', 0):.2f}\n"
+        content += f"Best Trade: {performance_data.get('best_trade', 'N/A')}\n"
+        content += f"Worst Trade: {performance_data.get('worst_trade', 'N/A')}\n"
+        content += f"Max Drawdown: ${performance_data.get('max_drawdown', 0):.2f}"
+        
+        return content
+    
+    def send_performance_summary(self):
+        """Send performance summary to Discord using PerformanceMonitor data."""
+        if not self.discord_notifier:
+            self.logger.warning("Discord notifier not available")
+            return False
+            
+        try:
+            performance_summary = self.get_performance_summary()
+            if not performance_summary:
+                self.logger.warning("Could not generate performance summary")
+                return False
+                
+            # Format the data
+            formatted_content = self._format_performance_summary(performance_summary)
+            
+            # Send using Discord notifier
+            self.discord_notifier.send_performance_summary(formatted_content)
+            
+            self.logger.info("Performance summary sent to Discord")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error sending performance summary: {e}")
+            return False
+    
     def _check_system_health(self):
         """Check system health and send alerts if needed."""
         try:
@@ -242,6 +495,19 @@ Unrealized P&L: ${position_summary['total_pnl']:.2f}"""
                 account_info = self.exchange_client.get_account_info()
                 if not account_info:
                     self._send_health_alert("Exchange connectivity issue detected")
+                    return
+            
+            # Check risk status using RiskManager
+            if self.risk_manager:
+                if self.risk_manager.is_at_risk():
+                    risk_level = self.risk_manager.get_liquidation_risk_level()
+                    if risk_level in ['HIGH', 'CRITICAL']:
+                        self._send_health_alert(f"High risk detected: {risk_level} risk level")
+                
+                # Check account status
+                account_status = self.risk_manager.get_account_status()
+                if account_status != AccountStatus.NORMAL:
+                    self._send_health_alert(f"Account status alert: {account_status.value}")
                     
         except Exception as e:
             self.logger.error(f"System health check error: {e}")

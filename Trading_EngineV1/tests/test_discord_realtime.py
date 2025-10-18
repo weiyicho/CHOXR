@@ -26,7 +26,7 @@ class DiscordRealtimeTester:
         
         # Load Discord configuration
         try:
-            monitoring_config = load_config("../config/monitoring.json")
+            monitoring_config = load_config("config/monitoring.json")
             webhook_url = monitoring_config.get('discord', {}).get('webhook_url', '')
             
             if not webhook_url or webhook_url == "YOUR_DISCORD_WEBHOOK_URL_HERE":

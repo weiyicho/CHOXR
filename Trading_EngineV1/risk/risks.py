@@ -108,6 +108,16 @@ class RiskManager:
         """
         return self.uni_mmr / 100.0 if self.uni_mmr > 1 else self.uni_mmr
     
+    def get_available_margin_ratio(self) -> float:
+        """
+        Calculate available margin ratio: (Equity - MM) / Equity
+        Higher ratio = more available margin for new positions
+        """
+        if self.account_equity == 0:
+            return 0.0
+        available_margin = self.account_equity - self.maint_margin
+        return available_margin / self.account_equity
+    
     def is_at_risk(self, margin_ratio_threshold: float = 1.5) -> bool:
         """
         Check if account is at risk based on Binance Portfolio Margin logic
@@ -239,4 +249,152 @@ class RiskManager:
             'maintenance_margin_usd': self.maint_margin,
             'max_withdraw_usd': self.max_withdraw,
             'last_update': self.get_last_update_time().isoformat()
+        }
+    
+    def process_balance_data(self, balance_data: list) -> Dict:
+        """
+        Process balance data from Binance API
+        
+        Args:
+            balance_data: List of balance dictionaries from get_balances()
+            
+        Returns:
+            Dictionary with processed balance information
+        """
+        processed_balances = {}
+        total_usd_value = 0.0
+        
+        for asset in balance_data:
+            asset_name = asset.get('asset', '')
+            
+            # Calculate total wallet balance (cross margin + futures)
+            total_wallet = float(asset.get('totalWalletBalance', 0))
+            cross_wallet = float(asset.get('crossMarginAsset', 0))
+            um_wallet = float(asset.get('umWalletBalance', 0))
+            cm_wallet = float(asset.get('cmWalletBalance', 0))
+            
+            # Calculate unrealized P&L
+            um_unrealized = float(asset.get('umUnrealizedPNL', 0))
+            cm_unrealized = float(asset.get('cmUnrealizedPNL', 0))
+            total_unrealized = um_unrealized + cm_unrealized
+            
+            processed_balances[asset_name] = {
+                'total_wallet_balance': total_wallet,
+                'cross_margin_balance': cross_wallet,
+                'futures_balance': um_wallet + cm_wallet,
+                'unrealized_pnl': total_unrealized,
+                'available_balance': float(asset.get('crossMarginFree', 0)),
+                'locked_balance': float(asset.get('crossMarginLocked', 0))
+            }
+            
+            # For USDT, assume 1:1 with USD
+            if asset_name == 'USDT':
+                total_usd_value += total_wallet + total_unrealized
+        
+        return {
+            'balances': processed_balances,
+            'total_usd_value': total_usd_value,
+            'num_assets': len(processed_balances)
+        }
+    
+    def process_positions_data(self, positions_data: list) -> Dict:
+        """
+        Process positions data from Binance API
+        
+        Args:
+            positions_data: List of position dictionaries from get_positions()
+            
+        Returns:
+            Dictionary with processed position information
+        """
+        if not positions_data:
+            return {
+                'total_positions': 0,
+                'total_unrealized_pnl': 0.0,
+                'total_position_value': 0.0,
+                'positions': {}
+            }
+        
+        processed_positions = {}
+        total_unrealized_pnl = 0.0
+        total_position_value = 0.0
+        
+        for position in positions_data:
+            symbol = position.get('symbol', '')
+            position_amt = float(position.get('positionAmt', 0))
+            
+            # Skip zero positions
+            if position_amt == 0:
+                continue
+            
+            entry_price = float(position.get('entryPrice', 0))
+            mark_price = float(position.get('markPrice', 0))
+            unrealized_pnl = float(position.get('unrealizedProfit', 0))
+            notional = float(position.get('notional', 0))
+            
+            processed_positions[symbol] = {
+                'side': 'LONG' if position_amt > 0 else 'SHORT',
+                'quantity': abs(position_amt),
+                'entry_price': entry_price,
+                'mark_price': mark_price,
+                'unrealized_pnl': unrealized_pnl,
+                'position_value': notional,
+                'pnl_percentage': (unrealized_pnl / (abs(position_amt) * entry_price) * 100) if entry_price > 0 else 0.0
+            }
+            
+            total_unrealized_pnl += unrealized_pnl
+            total_position_value += notional
+        
+        return {
+            'total_positions': len(processed_positions),
+            'total_unrealized_pnl': total_unrealized_pnl,
+            'total_position_value': total_position_value,
+            'positions': processed_positions
+        }
+    
+    def get_accounts_summary(self, balance_data: list, positions_data: list) -> Dict:
+        """
+        Generate accounts summary for Discord notifications
+        
+        Args:
+            balance_data: List of balance dictionaries from get_balances()
+            positions_data: List of position dictionaries from get_positions()
+            
+        Returns:
+            Dictionary formatted for Discord accounts summary
+        """
+        balance_info = self.process_balance_data(balance_data)
+        position_info = self.process_positions_data(positions_data)
+        
+        # Calculate leverage (position value / account equity)
+        leverage = position_info['total_position_value'] / self.account_equity if self.account_equity > 0 else 0.0
+        
+        return {
+            'exchange': 'binance',
+            'account_value': self.account_equity,
+            'position_value': position_info['total_position_value'],
+            'leverage': round(leverage, 2),
+            'available_balance': self.total_available_balance,
+            'unrealized_pnl': position_info['total_unrealized_pnl'],
+            'margin_ratio': self.get_margin_ratio(),
+            'risk_level': self.get_liquidation_risk_level()
+        }
+    
+    def get_positions_summary(self, positions_data: list) -> Dict:
+        """
+        Generate positions summary for Discord notifications
+        
+        Args:
+            positions_data: List of position dictionaries from get_positions()
+            
+        Returns:
+            Dictionary formatted for Discord positions summary
+        """
+        position_info = self.process_positions_data(positions_data)
+        
+        return {
+            'total_positions': position_info['total_positions'],
+            'total_unrealized_pnl': position_info['total_unrealized_pnl'],
+            'total_position_value': position_info['total_position_value'],
+            'positions': position_info['positions']
         }

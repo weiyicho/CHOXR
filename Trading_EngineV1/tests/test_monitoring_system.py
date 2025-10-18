@@ -26,7 +26,7 @@ class MonitoringSystemTester:
     
     def __init__(self):
         """Initialize the tester."""
-        self.logger = setup_logging("MonitoringSystemTester")
+        self.logger = setup_logging("INFO")
         
         # Load API configuration
         try:
