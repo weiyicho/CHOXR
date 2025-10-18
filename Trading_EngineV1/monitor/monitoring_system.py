@@ -1,6 +1,5 @@
 """
-Integrated Monitoring System
-Combines all monitoring components into a unified system
+Integrated monitoring system that orchestrates all monitoring components.
 """
 import time
 import threading
@@ -18,7 +17,7 @@ from util.utils import load_config, setup_logging
 
 @dataclass
 class MonitoringConfig:
-    """Monitoring system configuration"""
+    """Monitoring system configuration."""
     discord_webhook_url: str
     discord_channel_id: Optional[str] = None
     monitoring_interval: int = 5
@@ -30,24 +29,12 @@ class MonitoringConfig:
 
 
 class MonitoringSystem:
-    """
-    Integrated monitoring system that combines:
-    - Position monitoring
-    - Performance tracking
-    - Discord notifications
-    - Risk management
-    - Automated reporting
-    """
+    """Integrated monitoring system orchestrator."""
     
     def __init__(self, config_file: str = "config/monitoring.json"):
-        """
-        Initialize monitoring system
-        
-        Args:
-            config_file: Configuration file path
-        """
+        """Initialize monitoring system."""
         self.config_file = config_file
-        self.logger = setup_logging("MonitoringSystem")
+        self.logger = setup_logging("INFO")
         
         # Load configuration
         self.config = self._load_config()
@@ -68,7 +55,7 @@ class MonitoringSystem:
         self._initialize_components()
         
     def _load_config(self) -> MonitoringConfig:
-        """Load monitoring configuration"""
+        """Load monitoring configuration."""
         try:
             config_data = load_config(self.config_file)
             return MonitoringConfig(
@@ -83,11 +70,10 @@ class MonitoringSystem:
             )
         except Exception as e:
             self.logger.error(f"Error loading monitoring config: {e}")
-            # Return default config
             return MonitoringConfig(discord_webhook_url="")
             
     def _initialize_components(self):
-        """Initialize monitoring components"""
+        """Initialize monitoring components."""
         try:
             # Initialize Discord components
             if self.config.discord_webhook_url:
@@ -111,7 +97,7 @@ class MonitoringSystem:
             self.logger.error(f"Error initializing components: {e}")
             
     def set_exchange_client(self, exchange_client: BinanceFuturesClient):
-        """Set exchange client for monitoring"""
+        """Set exchange client for monitoring."""
         self.exchange_client = exchange_client
         
         # Initialize position monitor with exchange client
@@ -124,7 +110,7 @@ class MonitoringSystem:
             self.logger.info("Position monitor initialized with exchange client")
             
     def start_monitoring(self):
-        """Start the monitoring system"""
+        """Start the monitoring system."""
         if self.is_running:
             self.logger.warning("Monitoring system already running")
             return
@@ -145,16 +131,12 @@ class MonitoringSystem:
         
         # Send startup notification
         if self.discord_notifier:
-            self.discord_notifier.send_embed(
-                title="🚀 Monitoring System Started",
-                description="Trading engine monitoring is now active",
-                color=0x00ff00
-            )
+            self.discord_notifier.send_message("🚀 Monitoring System Started\nTrading engine monitoring is now active")
             
         self.logger.info("Monitoring system started")
         
     def stop_monitoring(self):
-        """Stop the monitoring system"""
+        """Stop the monitoring system."""
         self.is_running = False
         
         # Stop position monitoring
@@ -167,16 +149,12 @@ class MonitoringSystem:
             
         # Send shutdown notification
         if self.discord_notifier:
-            self.discord_notifier.send_embed(
-                title="🛑 Monitoring System Stopped",
-                description="Trading engine monitoring has been stopped",
-                color=0xff0000
-            )
+            self.discord_notifier.send_message("🛑 Monitoring System Stopped\nTrading engine monitoring has been stopped")
             
         self.logger.info("Monitoring system stopped")
         
     def _monitoring_loop(self):
-        """Main monitoring loop"""
+        """Main monitoring loop."""
         while self.is_running:
             try:
                 # Check for automated reports
@@ -193,43 +171,26 @@ class MonitoringSystem:
                 time.sleep(self.config.monitoring_interval)
                 
     def _handle_position_alert(self, alert: PositionAlert):
-        """Handle position alerts"""
+        """Handle position alerts."""
         if not self.discord_notifier:
             return
             
-        # Determine alert color based on level
-        color_map = {
-            AlertLevel.INFO: 0x0099ff,      # Blue
-            AlertLevel.WARNING: 0xffa500,    # Orange
-            AlertLevel.CRITICAL: 0xff6600,   # Dark Orange
-            AlertLevel.EMERGENCY: 0xff0000   # Red
-        }
-        
-        color = color_map.get(alert.level, 0xff0000)
-        
         # Create alert message
-        fields = [
-            {"name": "Symbol", "value": alert.symbol, "inline": True},
-            {"name": "Type", "value": alert.alert_type, "inline": True},
-            {"name": "Level", "value": alert.level.value, "inline": True}
-        ]
+        alert_message = f"Alert: {alert.symbol}\nType: {alert.alert_type}\nLevel: {alert.level.value}\nMessage: {alert.message}"
         
         # Add data fields
-        for key, value in alert.data.items():
-            if isinstance(value, (int, float)):
-                fields.append({"name": key.title(), "value": f"{value:.2f}", "inline": True})
-            else:
-                fields.append({"name": key.title(), "value": str(value), "inline": True})
-                
-        self.discord_notifier.send_embed(
-            title=f"⚠️ Position Alert - {alert.level.value}",
-            description=alert.message,
-            color=color,
-            fields=fields
-        )
+        if alert.data:
+            alert_message += "\nData:"
+            for key, value in alert.data.items():
+                if isinstance(value, (int, float)):
+                    alert_message += f"\n  {key}: {value:.2f}"
+                else:
+                    alert_message += f"\n  {key}: {value}"
+                    
+        self.discord_notifier.send_message(alert_message)
         
     def _check_automated_reports(self):
-        """Check if it's time for automated reports"""
+        """Check if it's time for automated reports."""
         now = datetime.now()
         time_since_last_report = now - self.last_report_time
         
@@ -238,7 +199,7 @@ class MonitoringSystem:
             self.last_report_time = now
             
     def _send_automated_report(self):
-        """Send automated performance report"""
+        """Send automated performance report."""
         if not self.discord_notifier:
             return
             
@@ -249,42 +210,35 @@ class MonitoringSystem:
             
             metrics = self.performance_monitor.get_performance_metrics(start_time, end_time)
             
-            # Create report
-            fields = [
-                {"name": "Total Trades", "value": str(metrics.total_trades), "inline": True},
-                {"name": "Win Rate", "value": f"{metrics.win_rate:.1f}%", "inline": True},
-                {"name": "Net P&L", "value": f"${metrics.net_pnl:.2f}", "inline": True},
-                {"name": "Total P&L", "value": f"${metrics.total_pnl:.2f}", "inline": True},
-                {"name": "Fees", "value": f"${metrics.total_fees:.2f}", "inline": True},
-                {"name": "Profit Factor", "value": f"{metrics.profit_factor:.2f}", "inline": True}
-            ]
+            # Create report message
+            report_message = f"""Daily Performance Report
+Period: Last 24 Hours
+Total Trades: {metrics.total_trades}
+Win Rate: {metrics.win_rate:.1f}%
+Net P&L: ${metrics.net_pnl:.2f}
+Total P&L: ${metrics.total_pnl:.2f}
+Fees: ${metrics.total_fees:.2f}
+Profit Factor: {metrics.profit_factor:.2f}"""
             
             # Add position summary if available
             if self.position_monitor:
                 position_summary = self.position_monitor.get_position_summary()
                 if position_summary.get('total_positions', 0) > 0:
-                    fields.extend([
-                        {"name": "Active Positions", "value": str(position_summary['total_positions']), "inline": True},
-                        {"name": "Position Value", "value": f"${position_summary['total_value']:.2f}", "inline": True},
-                        {"name": "Unrealized P&L", "value": f"${position_summary['total_pnl']:.2f}", "inline": True}
-                    ])
+                    report_message += f"""
+Active Positions: {position_summary['total_positions']}
+Position Value: ${position_summary['total_value']:.2f}
+Unrealized P&L: ${position_summary['total_pnl']:.2f}"""
                     
-            self.discord_notifier.send_embed(
-                title="📊 Daily Performance Report",
-                description=f"Performance summary for the last 24 hours",
-                color=0x0099ff,
-                fields=fields
-            )
+            self.discord_notifier.send_message(report_message)
             
         except Exception as e:
             self.logger.error(f"Error sending automated report: {e}")
             
     def _check_system_health(self):
-        """Check system health and send alerts if needed"""
+        """Check system health and send alerts if needed."""
         try:
             # Check exchange connectivity
             if self.exchange_client:
-                # Simple connectivity check
                 account_info = self.exchange_client.get_account_info()
                 if not account_info:
                     self._send_health_alert("Exchange connectivity issue detected")
@@ -294,27 +248,14 @@ class MonitoringSystem:
             self._send_health_alert(f"System health check failed: {str(e)}")
             
     def _send_health_alert(self, message: str):
-        """Send system health alert"""
+        """Send system health alert."""
         if self.discord_notifier:
-            self.discord_notifier.send_embed(
-                title="🚨 System Health Alert",
-                description=message,
-                color=0xff0000
-            )
+            self.discord_notifier.send_message(f"🚨 System Health Alert\n{message}")
             
-    def record_trade(
-        self,
-        symbol: str,
-        side: str,
-        quantity: float,
-        entry_price: float,
-        exit_price: float,
-        entry_time: datetime,
-        exit_time: datetime,
-        fees: float = 0.0,
-        strategy: str = ""
-    ):
-        """Record a completed trade"""
+    def record_trade(self, symbol: str, side: str, quantity: float, entry_price: float,
+                     exit_price: float, entry_time: datetime, exit_time: datetime,
+                     fees: float = 0.0, strategy: str = ""):
+        """Record a completed trade."""
         if self.performance_monitor:
             self.performance_monitor.record_trade(
                 symbol=symbol,
@@ -333,25 +274,20 @@ class MonitoringSystem:
             pnl = (exit_price - entry_price) * quantity if side == 'BUY' else (entry_price - exit_price) * quantity
             pnl_percentage = (pnl / (entry_price * quantity)) * 100 if entry_price > 0 else 0
             
-            color = 0x00ff00 if pnl > 0 else 0xff0000
-            emoji = "📈" if pnl > 0 else "📉"
+            trade_message = f"""Trade Completed
+Symbol: {symbol}
+Side: {side}
+Quantity: {quantity:.6f}
+Entry Price: ${entry_price:.4f}
+Exit Price: ${exit_price:.4f}
+P&L: ${pnl:.2f}
+P&L %: {pnl_percentage:.2f}%
+Fees: ${fees:.2f}"""
             
-            self.discord_notifier.send_embed(
-                title=f"{emoji} Trade Completed",
-                description=f"**{symbol}** {side}",
-                color=color,
-                fields=[
-                    {"name": "Quantity", "value": f"{quantity:.6f}", "inline": True},
-                    {"name": "Entry Price", "value": f"${entry_price:.4f}", "inline": True},
-                    {"name": "Exit Price", "value": f"${exit_price:.4f}", "inline": True},
-                    {"name": "P&L", "value": f"${pnl:.2f}", "inline": True},
-                    {"name": "P&L %", "value": f"{pnl_percentage:.2f}%", "inline": True},
-                    {"name": "Fees", "value": f"${fees:.2f}", "inline": True}
-                ]
-            )
+            self.discord_notifier.send_message(trade_message)
             
     def get_system_status(self) -> Dict:
-        """Get current system status"""
+        """Get current system status."""
         status = {
             'monitoring_active': self.is_running,
             'exchange_connected': bool(self.exchange_client),
@@ -382,7 +318,7 @@ class MonitoringSystem:
         return status
         
     def send_manual_report(self):
-        """Send manual performance report"""
+        """Send manual performance report."""
         if not self.discord_notifier:
             return False
             
@@ -394,15 +330,9 @@ class MonitoringSystem:
             if len(report) > 2000:
                 chunks = [report[i:i+2000] for i in range(0, len(report), 2000)]
                 for i, chunk in enumerate(chunks):
-                    self.discord_notifier.send_message(
-                        content=f"```\n{chunk}\n```",
-                        username=f"Performance Report {i+1}"
-                    )
+                    self.discord_notifier.send_message(f"Performance Report {i+1}\n{chunk}")
             else:
-                self.discord_notifier.send_message(
-                    content=f"```\n{report}\n```",
-                    username="Performance Report"
-                )
+                self.discord_notifier.send_message(report)
                 
             return True
             

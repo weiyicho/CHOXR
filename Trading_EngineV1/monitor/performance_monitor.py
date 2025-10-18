@@ -1,6 +1,5 @@
 """
-Performance Monitor
-Track trading performance metrics and generate reports
+Performance monitoring and analytics system for trade tracking and reporting.
 """
 import time
 import json
@@ -14,7 +13,7 @@ from util.utils import setup_logging
 
 @dataclass
 class TradeRecord:
-    """Individual trade record"""
+    """Individual trade record."""
     symbol: str
     side: str
     quantity: float
@@ -31,7 +30,7 @@ class TradeRecord:
 
 @dataclass
 class PerformanceMetrics:
-    """Performance metrics summary"""
+    """Performance metrics summary."""
     total_trades: int
     winning_trades: int
     losing_trades: int
@@ -52,33 +51,18 @@ class PerformanceMetrics:
 
 
 class PerformanceMonitor:
-    """
-    Performance monitoring and analytics system
-    
-    Tracks:
-    - Trade performance
-    - Win/loss ratios
-    - P&L analysis
-    - Risk metrics
-    - Strategy performance
-    """
+    """Performance monitoring and analytics system."""
     
     def __init__(self, data_file: str = "monitor/performance_data.json"):
-        """
-        Initialize performance monitor
-        
-        Args:
-            data_file: File to store performance data
-        """
+        """Initialize performance monitor."""
         self.data_file = data_file
         self.trades: List[TradeRecord] = []
-        self.logger = setup_logging("PerformanceMonitor")
+        self.logger = setup_logging("INFO")
         
-        # Load existing data
         self._load_data()
         
     def _load_data(self):
-        """Load performance data from file"""
+        """Load performance data from file."""
         try:
             with open(self.data_file, 'r') as f:
                 data = json.load(f)
@@ -105,7 +89,7 @@ class PerformanceMonitor:
             self.logger.error(f"Error loading performance data: {e}")
             
     def _save_data(self):
-        """Save performance data to file"""
+        """Save performance data to file."""
         try:
             data = {
                 'trades': [
@@ -134,33 +118,10 @@ class PerformanceMonitor:
         except Exception as e:
             self.logger.error(f"Error saving performance data: {e}")
             
-    def record_trade(
-        self,
-        symbol: str,
-        side: str,
-        quantity: float,
-        entry_price: float,
-        exit_price: float,
-        entry_time: datetime,
-        exit_time: datetime,
-        fees: float = 0.0,
-        strategy: str = ""
-    ):
-        """
-        Record a completed trade
-        
-        Args:
-            symbol: Trading symbol
-            side: BUY or SELL
-            quantity: Trade quantity
-            entry_price: Entry price
-            exit_price: Exit price
-            entry_time: Entry timestamp
-            exit_time: Exit timestamp
-            fees: Trading fees
-            strategy: Strategy name
-        """
-        # Calculate metrics
+    def record_trade(self, symbol: str, side: str, quantity: float, entry_price: float, 
+                     exit_price: float, entry_time: datetime, exit_time: datetime, 
+                     fees: float = 0.0, strategy: str = ""):
+        """Record a completed trade."""
         duration_minutes = (exit_time - entry_time).total_seconds() / 60
         pnl = (exit_price - entry_price) * quantity if side == 'BUY' else (entry_price - exit_price) * quantity
         pnl_percentage = (pnl / (entry_price * quantity)) * 100 if entry_price > 0 else 0
@@ -185,23 +146,10 @@ class PerformanceMonitor:
         
         self.logger.info(f"Recorded trade: {symbol} {side} P&L: ${pnl:.2f} ({pnl_percentage:.2f}%)")
         
-    def get_performance_metrics(
-        self,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
-        strategy: Optional[str] = None
-    ) -> PerformanceMetrics:
-        """
-        Calculate performance metrics for a period
-        
-        Args:
-            start_date: Start date filter
-            end_date: End date filter
-            strategy: Strategy filter
-            
-        Returns:
-            PerformanceMetrics object
-        """
+    def get_performance_metrics(self, start_date: Optional[datetime] = None, 
+                               end_date: Optional[datetime] = None, 
+                               strategy: Optional[str] = None) -> PerformanceMetrics:
+        """Calculate performance metrics for a period."""
         # Filter trades
         filtered_trades = self.trades
         
@@ -214,22 +162,10 @@ class PerformanceMonitor:
             
         if not filtered_trades:
             return PerformanceMetrics(
-                total_trades=0,
-                winning_trades=0,
-                losing_trades=0,
-                win_rate=0.0,
-                total_pnl=0.0,
-                total_fees=0.0,
-                net_pnl=0.0,
-                avg_win=0.0,
-                avg_loss=0.0,
-                profit_factor=0.0,
-                max_drawdown=0.0,
-                sharpe_ratio=0.0,
-                avg_trade_duration=0.0,
-                best_trade=0.0,
-                worst_trade=0.0,
-                period_start=start_date or datetime.min,
+                total_trades=0, winning_trades=0, losing_trades=0, win_rate=0.0,
+                total_pnl=0.0, total_fees=0.0, net_pnl=0.0, avg_win=0.0, avg_loss=0.0,
+                profit_factor=0.0, max_drawdown=0.0, sharpe_ratio=0.0, avg_trade_duration=0.0,
+                best_trade=0.0, worst_trade=0.0, period_start=start_date or datetime.min,
                 period_end=end_date or datetime.max
             )
             
@@ -255,10 +191,8 @@ class PerformanceMonitor:
         gross_loss = abs(sum(losses)) if losses else 0
         profit_factor = gross_profit / gross_loss if gross_loss > 0 else float('inf')
         
-        # Drawdown calculation
+        # Drawdown and Sharpe ratio
         max_drawdown = self._calculate_max_drawdown(filtered_trades)
-        
-        # Sharpe ratio (simplified)
         sharpe_ratio = self._calculate_sharpe_ratio(filtered_trades)
         
         # Duration metrics
@@ -289,11 +223,10 @@ class PerformanceMonitor:
         )
         
     def _calculate_max_drawdown(self, trades: List[TradeRecord]) -> float:
-        """Calculate maximum drawdown"""
+        """Calculate maximum drawdown."""
         if not trades:
             return 0.0
             
-        # Sort by entry time
         sorted_trades = sorted(trades, key=lambda t: t.entry_time)
         
         peak = 0
@@ -311,14 +244,13 @@ class PerformanceMonitor:
         return max_dd
         
     def _calculate_sharpe_ratio(self, trades: List[TradeRecord]) -> float:
-        """Calculate simplified Sharpe ratio"""
+        """Calculate simplified Sharpe ratio."""
         if len(trades) < 2:
             return 0.0
             
         pnls = [t.pnl for t in trades]
         mean_pnl = sum(pnls) / len(pnls)
         
-        # Calculate standard deviation
         variance = sum((pnl - mean_pnl) ** 2 for pnl in pnls) / len(pnls)
         std_dev = variance ** 0.5
         
@@ -328,7 +260,7 @@ class PerformanceMonitor:
         return mean_pnl / std_dev
         
     def get_strategy_performance(self) -> Dict[str, PerformanceMetrics]:
-        """Get performance metrics by strategy"""
+        """Get performance metrics by strategy."""
         strategies = set(t.strategy for t in self.trades if t.strategy)
         performance = {}
         
@@ -337,35 +269,9 @@ class PerformanceMonitor:
             
         return performance
         
-    def get_symbol_performance(self) -> Dict[str, PerformanceMetrics]:
-        """Get performance metrics by symbol"""
-        symbols = set(t.symbol for t in self.trades)
-        performance = {}
-        
-        for symbol in symbols:
-            performance[symbol] = self.get_performance_metrics()
-            # Filter trades for this symbol
-            symbol_trades = [t for t in self.trades if t.symbol == symbol]
-            if symbol_trades:
-                performance[symbol] = self.get_performance_metrics()
-                
-        return performance
-        
-    def generate_report(
-        self,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None
-    ) -> str:
-        """
-        Generate performance report
-        
-        Args:
-            start_date: Report start date
-            end_date: Report end date
-            
-        Returns:
-            Formatted report string
-        """
+    def generate_report(self, start_date: Optional[datetime] = None, 
+                       end_date: Optional[datetime] = None) -> str:
+        """Generate performance report."""
         metrics = self.get_performance_metrics(start_date, end_date)
         
         report = f"""
@@ -401,15 +307,7 @@ class PerformanceMonitor:
         return report.strip()
         
     def export_trades(self, filename: str = None) -> str:
-        """
-        Export trades to CSV file
-        
-        Args:
-            filename: Output filename
-            
-        Returns:
-            Filename of exported file
-        """
+        """Export trades to CSV file."""
         if not filename:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"monitor/trades_export_{timestamp}.csv"
