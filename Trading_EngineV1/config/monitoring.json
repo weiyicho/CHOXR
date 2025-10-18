@@ -1,0 +1,53 @@
+{
+  "discord": {
+    "webhook_url": "YOUR_DISCORD_WEBHOOK_URL_HERE",
+    "channel_id": "YOUR_DISCORD_CHANNEL_ID_HERE",
+    "enabled": true,
+    "notifications": {
+      "trades": true,
+      "alerts": true,
+      "reports": true,
+      "errors": true
+    }
+  },
+  "monitoring": {
+    "interval": 5,
+    "position_monitoring": true,
+    "performance_monitoring": true,
+    "health_checks": true
+  },
+  "alerts": {
+    "position": {
+      "enabled": true,
+      "pnl_loss_threshold": -10.0,
+      "position_value_threshold": 1000.0,
+      "leverage_threshold": 10.0,
+      "margin_ratio_threshold": 0.8
+    },
+    "performance": {
+      "enabled": true,
+      "daily_loss_threshold": -100.0,
+      "drawdown_threshold": -500.0,
+      "win_rate_threshold": 30.0
+    },
+    "risk": {
+      "enabled": true,
+      "max_position_size": 1000.0,
+      "max_total_exposure": 5000.0,
+      "max_daily_trades": 50
+    }
+  },
+  "reports": {
+    "auto": true,
+    "interval_hours": 24,
+    "include_positions": true,
+    "include_performance": true,
+    "include_risk_metrics": true
+  },
+  "logging": {
+    "level": "INFO",
+    "file": "monitor/monitoring.log",
+    "max_size_mb": 10,
+    "backup_count": 5
+  }
+}

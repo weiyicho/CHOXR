@@ -1,16 +1,21 @@
-# Binance SDK Testing Guide
+# Trading Engine Testing Guide
 
 ## Quick Start
 
 ### 1. Setup API Configuration
 ```bash
-python3 setup_api_config.py
+python3 tests/setup_api_config.py
 ```
 Follow the interactive prompts to enter your Binance API credentials.
 
 ### 2. Test the SDK
 ```bash
-python3 test_binance_sdk.py
+python3 tests/test_binance_sdk.py
+```
+
+### 3. Test Monitoring System
+```bash
+python3 tests/test_monitoring_system.py
 ```
 
 ## What Gets Tested
