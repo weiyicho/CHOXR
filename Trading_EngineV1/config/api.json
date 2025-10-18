@@ -1,0 +1,28 @@
+{
+    "binance": {
+        "api_key": "nMFq4rDd4t20xIjVKynla5EsclzAoDnSLMIZE0OA8TjFqh9m9dILjPynEjlnh1mc",
+        "api_secret": "T5IQNNP9aJlrho9X2jgloI4sjRGqboEnrdvWU4eD6j9zHDjH1Fkzb7BOWoVAczHn",
+        "testnet": false,
+        "timeout": 30,
+        "base_url": "https://api.binance.com",
+        "futures_url": "https://fapi.binance.com"
+    },
+    "bybit": {
+        "api_key": "YOUR_BYBIT_API_KEY_HERE",
+        "api_secret": "YOUR_BYBIT_API_SECRET_HERE",
+        "testnet": true,
+        "timeout": 30,
+        "base_url": "https://api-testnet.bybit.com"
+    },
+    "discord": {
+        "webhook_url": "YOUR_DISCORD_WEBHOOK_URL_HERE",
+        "bot_token": "YOUR_DISCORD_BOT_TOKEN_HERE",
+        "channel_id": "YOUR_DISCORD_CHANNEL_ID_HERE"
+    },
+    "general": {
+        "timeout": 30,
+        "max_retries": 3,
+        "retry_delay": 1,
+        "log_level": "INFO"
+    }
+}
