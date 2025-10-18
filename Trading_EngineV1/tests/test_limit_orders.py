@@ -9,8 +9,8 @@ import os
 import json
 from datetime import datetime, timezone
 
-# Add the src directory to the path
-sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
+# Add the parent directory to the path for imports
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from src.binance_sdk import BinanceFuturesClient
 from order.order import OrderManager

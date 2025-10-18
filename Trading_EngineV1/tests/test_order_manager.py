@@ -7,8 +7,8 @@ Tests OBI, OBIV, and percentile calculations without placing real orders.
 import sys
 import os
 
-# Add the src directory to the path
-sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
+# Add the parent directory to the path for imports
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from order.order import OrderManager
 

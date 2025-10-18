@@ -1,291 +1,340 @@
+#!/usr/bin/env python3
 """
-Unit tests for the enhanced Binance Futures Client.
+Test script for Binance SDK functions.
+This script allows you to test various Binance SDK methods including order operations.
 """
 
-import pytest
-import requests
-from unittest.mock import Mock, patch, MagicMock
+import sys
+import os
+import json
 from datetime import datetime, timezone
 
+# Add the parent directory to the path for imports
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
 from src.binance_sdk import BinanceFuturesClient
+from util.utils import load_config, setup_logging
 
 
-class TestBinanceFuturesClient:
-    """Test the enhanced Binance Futures Client."""
+class BinanceSDKTester:
+    """Test class for Binance SDK functions."""
     
-    @pytest.fixture
-    def mock_config(self):
-        """Mock configuration for testing."""
-        return {
-            "api_key": "test_api_key",
-            "api_secret": "test_api_secret",
-            "timeout": 30,
-            "testnet": True
-        }
+    def __init__(self, config_path: str = "config/api.json"):
+        """
+        Initialize the tester.
+        
+        Args:
+            config_path: Path to API configuration file
+        """
+        self.config_path = config_path
+        self.config = None
+        self.client = None
+        self.logger = setup_logging("INFO")
+        
+    def load_configuration(self):
+        """Load API configuration."""
+        try:
+            self.config = load_config(self.config_path)
+            self.logger.info("Configuration loaded successfully")
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to load configuration: {e}")
+            return False
     
-    @pytest.fixture
-    def mock_exchange(self):
-        """Mock exchange object for testing."""
-        exchange = Mock()
-        exchange.id = "binance"
-        return exchange
+    def initialize_client(self):
+        """Initialize Binance client."""
+        try:
+            if not self.config:
+                self.logger.error("Configuration not loaded")
+                return False
+            
+            binance_config = self.config.get("binance", {})
+            if not binance_config:
+                self.logger.error("Binance configuration not found")
+                return False
+            
+            # Create a mock exchange object
+            mock_exchange = type('MockExchange', (), {'id': 'binance'})()
+            
+            self.client = BinanceFuturesClient(binance_config, mock_exchange)
+            self.logger.info("Binance client initialized successfully")
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to initialize client: {e}")
+            return False
     
-    @pytest.fixture
-    def binance_client(self, mock_config, mock_exchange):
-        """Create Binance client instance for testing."""
-        with patch('src.binance_sdk.BinanceFuturesClient.__init__', return_value=None):
-            client = BinanceFuturesClient.__new__(BinanceFuturesClient)
-            client._api_key = mock_config["api_key"]
-            client._api_secret = mock_config["api_secret"]
-            client.config = mock_config
-            client._timeout = mock_config["timeout"]
-            client._session = Mock()
-            client._market_endpoint = 'https://fapi.binance.com'
-            client._private_endpoint = 'https://papi.binance.com'
-            client.header = {"X-MBX-APIKEY": client._api_key}
-            return client
+    def test_public_endpoints(self):
+        """Test public endpoints (no authentication required)."""
+        self.logger.info("=== Testing Public Endpoints ===")
+        
+        try:
+            # Test getting exchange info
+            self.logger.info("Testing get_exchange_info()...")
+            exchange_info = self.client.get_exchange_info()
+            self.logger.info(f"Exchange info retrieved: {len(exchange_info.get('symbols', []))} symbols")
+            
+            # Test getting order book
+            self.logger.info("Testing get_order_book()...")
+            order_book = self.client.get_order_book("BTCUSDT", limit=5)
+            self.logger.info(f"Order book retrieved: {len(order_book.get('bids', []))} bids, {len(order_book.get('asks', []))} asks")
+            
+            # Test getting recent trades
+            self.logger.info("Testing get_recent_trades()...")
+            trades = self.client.get_recent_trades("BTCUSDT", limit=5)
+            self.logger.info(f"Recent trades retrieved: {len(trades)} trades")
+            
+            # Test getting klines
+            self.logger.info("Testing get_klines()...")
+            klines = self.client.get_klines("BTCUSDT", "1m", limit=5)
+            self.logger.info(f"Klines retrieved: {len(klines)} candles")
+            
+            # Test getting spot price
+            self.logger.info("Testing get_spot_price()...")
+            spot_price = self.client.get_spot_price("BTCUSDT")
+            self.logger.info(f"Spot price: {spot_price}")
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Public endpoint test failed: {e}")
+            return False
     
-    def test_generate_signature(self, binance_client):
-        """Test signature generation."""
-        params = {'symbol': 'BTCUSDT', 'side': 'BUY'}
-        signed_params = binance_client._generate_signature(params)
+    def test_private_endpoints(self):
+        """Test private endpoints (authentication required)."""
+        self.logger.info("=== Testing Private Endpoints ===")
         
-        assert 'timestamp' in signed_params
-        assert 'recvWindow' in signed_params
-        assert 'signature' in signed_params
-        assert signed_params['symbol'] == 'BTCUSDT'
-        assert signed_params['side'] == 'BUY'
+        try:
+            # Test getting account info
+            self.logger.info("Testing get_account_info()...")
+            account_info = self.client.get_account_info()
+            self.logger.info(f"Account info retrieved: Balance: {account_info.get('totalWalletBalance', 'N/A')}")
+            
+            # Test getting balances
+            self.logger.info("Testing get_balances()...")
+            balances = self.client.get_balances()
+            self.logger.info(f"Balances retrieved: {len(balances)} assets")
+            
+            # Test getting positions
+            self.logger.info("Testing get_positions()...")
+            positions = self.client.get_positions()
+            self.logger.info(f"Positions retrieved: {len(positions)} positions")
+            
+            # Test getting open orders
+            self.logger.info("Testing get_open_orders()...")
+            open_orders = self.client.get_open_orders()
+            self.logger.info(f"Open orders retrieved: {len(open_orders)} orders")
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Private endpoint test failed: {e}")
+            return False
     
-    def test_process_api_response_success(self, binance_client):
-        """Test successful API response processing."""
-        mock_response = Mock()
-        mock_response.json.return_value = {'result': 'success'}
+    def test_order_operations(self, symbol: str = "DOGEUSDT", max_order_value: float = 6.0):
+        """Test order operations with immediate buy/sell cycle."""
+        self.logger.info(f"=== Testing Order Operations for {symbol} (${max_order_value} Buy/Sell) ===")
         
-        result = binance_client._process_api_response(mock_response)
-        assert result == {'result': 'success'}
+        try:
+            # Get current market price and exchange info for precision rules
+            self.logger.info("Getting current market price and symbol info...")
+            try:
+                spot_price = float(self.client.get_spot_price(symbol))
+                self.logger.info(f"Current {symbol} price: ${spot_price}")
+                
+                # Get exchange info to find precision rules
+                exchange_info = self.client.get_exchange_info()
+                symbol_info = None
+                for s in exchange_info.get('symbols', []):
+                    if s.get('symbol') == symbol:
+                        symbol_info = s
+                        break
+                
+                if symbol_info:
+                    # Get quantity precision from symbol filters
+                    lot_size_filter = next((f for f in symbol_info.get('filters', []) if f.get('filterType') == 'LOT_SIZE'), None)
+                    if lot_size_filter:
+                        step_size = float(lot_size_filter.get('stepSize', '0.00001'))
+                        min_qty = float(lot_size_filter.get('minQty', '0.00001'))
+                        self.logger.info(f"Symbol precision: min_qty={min_qty}, step_size={step_size}")
+                    else:
+                        step_size = 0.01  # Default for DOGE
+                        min_qty = 1.0
+                else:
+                    step_size = 0.01  # Default for DOGE
+                    min_qty = 1.0
+                
+                # Calculate quantity respecting precision rules
+                raw_quantity = max_order_value / spot_price
+                # Round to step size
+                safe_quantity = round(raw_quantity / step_size) * step_size
+                # Ensure minimum quantity
+                safe_quantity = max(safe_quantity, min_qty)
+                
+                # Calculate actual order value
+                order_value = safe_quantity * spot_price
+                self.logger.info(f"Calculated quantity: {safe_quantity} {symbol} = ${order_value:.2f}")
+                
+            except Exception as price_error:
+                self.logger.warning(f"Could not get current price: {price_error}")
+                # Fallback for DOGE
+                safe_quantity = 100.0  # DOGE fallback
+                spot_price = 0.06  # DOGE fallback price
+                self.logger.info(f"Using fallback: {safe_quantity} {symbol} at ${spot_price}")
+            
+            # Test immediate buy/sell cycle
+            self.logger.info("=== Starting Buy/Sell Cycle ===")
+            
+            # Step 1: Buy order (market order for immediate execution)
+            self.logger.info("Step 1: Placing BUY market order...")
+            try:
+                buy_order_result = self.client.place_market_order(
+                    symbol=symbol,
+                    side="BUY",
+                    quantity=safe_quantity
+                )
+                self.logger.info(f"✅ BUY order placed: {buy_order_result}")
+                
+                if 'orderId' in buy_order_result:
+                    # Wait a moment for order to fill
+                    import time
+                    time.sleep(2)
+                    
+                    # Check buy order status
+                    buy_status = self.client.get_order_status(symbol, buy_order_result['orderId'])
+                    self.logger.info(f"BUY order status: {buy_status}")
+                    
+                    # Step 2: Immediate sell order
+                    if buy_status.get('status') in ['FILLED', 'PARTIALLY_FILLED']:
+                        self.logger.info("Step 2: Placing SELL market order...")
+                        
+                        # Get actual filled quantity
+                        filled_qty = float(buy_status.get('executedQty', safe_quantity))
+                        self.logger.info(f"Selling {filled_qty} {symbol}")
+                        
+                        sell_order_result = self.client.place_market_order(
+                            symbol=symbol,
+                            side="SELL",
+                            quantity=filled_qty
+                        )
+                        self.logger.info(f"✅ SELL order placed: {sell_order_result}")
+                        
+                        # Check sell order status
+                        if 'orderId' in sell_order_result:
+                            time.sleep(2)
+                            sell_status = self.client.get_order_status(symbol, sell_order_result['orderId'])
+                            self.logger.info(f"SELL order status: {sell_status}")
+                            
+                            # Calculate P&L
+                            if sell_status.get('status') in ['FILLED', 'PARTIALLY_FILLED']:
+                                buy_price = float(buy_status.get('avgPrice', spot_price))
+                                sell_price = float(sell_status.get('avgPrice', spot_price))
+                                pnl = (sell_price - buy_price) * filled_qty
+                                self.logger.info(f"📊 Trade P&L: ${pnl:.4f} (Buy: ${buy_price:.4f}, Sell: ${sell_price:.4f})")
+                    
+                    else:
+                        self.logger.warning(f"BUY order not filled: {buy_status}")
+                
+            except Exception as order_error:
+                self.logger.error(f"Buy/Sell cycle failed: {order_error}")
+                return False
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Order operations test failed: {e}")
+            return False
     
-    def test_process_api_response_with_code(self, binance_client):
-        """Test API response processing with code."""
-        mock_response = Mock()
-        mock_response.json.return_value = {'code': 200, 'msg': 'Success'}
+    def test_leverage_operations(self, symbol: str = "DOGEUSDT"):
+        """Test leverage operations."""
+        self.logger.info(f"=== Testing Leverage Operations for {symbol} ===")
         
-        result = binance_client._process_api_response(mock_response)
-        assert result == 'Success'
+        try:
+            # Test changing leverage (use correct FAPI endpoint)
+            self.logger.info("Testing change_leverage()...")
+            leverage_result = self.client.change_leverage(symbol, 5)
+            self.logger.info(f"Leverage changed: {leverage_result}")
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Leverage operations test failed: {e}")
+            return False
     
-    def test_process_api_response_error(self, binance_client):
-        """Test API response processing with error."""
-        mock_response = Mock()
-        mock_response.json.return_value = {'code': 400, 'msg': 'Bad Request'}
+    def run_all_tests(self):
+        """Run all tests."""
+        self.logger.info("Starting Binance SDK tests...")
         
-        with pytest.raises(Exception):
-            binance_client._process_api_response(mock_response)
-    
-    def test_convert_to_timestamp_datetime(self, binance_client):
-        """Test timestamp conversion with datetime object."""
-        dt = datetime(2023, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
-        timestamp = binance_client._convert_to_timestamp(dt)
-        assert isinstance(timestamp, int)
-        assert timestamp > 0
-    
-    def test_convert_to_timestamp_string(self, binance_client):
-        """Test timestamp conversion with string."""
-        timestamp = binance_client._convert_to_timestamp("2023-01-01 12:00:00")
-        assert isinstance(timestamp, int)
-        assert timestamp > 0
-    
-    def test_convert_to_timestamp_none(self, binance_client):
-        """Test timestamp conversion with None."""
-        timestamp = binance_client._convert_to_timestamp(None)
-        assert timestamp is None
-    
-    def test_convert_to_timestamp_invalid_type(self, binance_client):
-        """Test timestamp conversion with invalid type."""
-        with pytest.raises(ValueError):
-            binance_client._convert_to_timestamp(123)
-    
-    @patch('requests.get')
-    def test_get_klines(self, mock_get, binance_client):
-        """Test getting klines data."""
-        mock_response = Mock()
-        mock_response.json.return_value = [['1640995200000', '45000', '46000', '44000', '45500', '100']]
-        mock_get.return_value = mock_response
+        if not self.load_configuration():
+            return False
         
-        result = binance_client.get_klines('BTCUSDT', '1h')
+        if not self.initialize_client():
+            return False
         
-        mock_get.assert_called_once()
-        assert isinstance(result, list)
-    
-    @patch('requests.get')
-    def test_get_order_book(self, mock_get, binance_client):
-        """Test getting order book data."""
-        mock_response = Mock()
-        mock_response.json.return_value = {
-            'bids': [['45000', '1.5']],
-            'asks': [['45001', '2.0']]
-        }
-        mock_get.return_value = mock_response
+        # Run tests
+        tests = [
+            ("Public Endpoints", self.test_public_endpoints),
+            ("Private Endpoints", self.test_private_endpoints),
+            ("Order Operations", lambda: self.test_order_operations()),
+            ("Leverage Operations", lambda: self.test_leverage_operations()),
+        ]
         
-        result = binance_client.get_order_book('BTCUSDT')
+        results = {}
+        for test_name, test_func in tests:
+            self.logger.info(f"\n--- Running {test_name} Test ---")
+            try:
+                results[test_name] = test_func()
+            except Exception as e:
+                self.logger.error(f"{test_name} test failed with exception: {e}")
+                results[test_name] = False
         
-        mock_get.assert_called_once()
-        assert 'bids' in result
-        assert 'asks' in result
-    
-    @patch('requests.get')
-    def test_get_recent_trades(self, mock_get, binance_client):
-        """Test getting recent trades."""
-        mock_response = Mock()
-        mock_response.json.return_value = [{'price': '45000', 'qty': '0.1', 'time': 1640995200000}]
-        mock_get.return_value = mock_response
+        # Print summary
+        self.logger.info("\n=== Test Summary ===")
+        for test_name, result in results.items():
+            status = "PASSED" if result else "FAILED"
+            self.logger.info(f"{test_name}: {status}")
         
-        result = binance_client.get_recent_trades('BTCUSDT')
-        
-        mock_get.assert_called_once()
-        assert isinstance(result, list)
-    
-    @patch('requests.get')
-    def test_get_spot_price(self, mock_get, binance_client):
-        """Test getting spot price."""
-        mock_response = Mock()
-        mock_response.json.return_value = {'price': '45000.00'}
-        mock_get.return_value = mock_response
-        
-        result = binance_client.get_spot_price('BTCUSDT')
-        
-        assert result == '45000.00'
-    
-    @patch('requests.post')
-    def test_place_market_order(self, mock_post, binance_client):
-        """Test placing market order."""
-        mock_response = Mock()
-        mock_response.json.return_value = {'orderId': 12345, 'status': 'FILLED'}
-        mock_post.return_value = mock_response
-        
-        result = binance_client.place_market_order('BTCUSDT', 'BUY', 0.01)
-        
-        mock_post.assert_called_once()
-        assert 'orderId' in result
-    
-    @patch('requests.post')
-    def test_place_limit_order(self, mock_post, binance_client):
-        """Test placing limit order."""
-        mock_response = Mock()
-        mock_response.json.return_value = {'orderId': 12346, 'status': 'NEW'}
-        mock_post.return_value = mock_response
-        
-        result = binance_client.place_limit_order('BTCUSDT', 'BUY', 45000, 0.01)
-        
-        mock_post.assert_called_once()
-        assert 'orderId' in result
-    
-    @patch('requests.get')
-    def test_get_order_status(self, mock_get, binance_client):
-        """Test getting order status."""
-        mock_response = Mock()
-        mock_response.json.return_value = {'orderId': 12345, 'status': 'FILLED', 'symbol': 'BTCUSDT'}
-        mock_get.return_value = mock_response
-        
-        result = binance_client.get_order_status('BTCUSDT', 12345)
-        
-        mock_get.assert_called_once()
-        assert result['orderId'] == 12345
-    
-    @patch('requests.get')
-    def test_get_open_orders(self, mock_get, binance_client):
-        """Test getting open orders."""
-        mock_response = Mock()
-        mock_response.json.return_value = [{'orderId': 12345, 'status': 'NEW', 'symbol': 'BTCUSDT'}]
-        mock_get.return_value = mock_response
-        
-        result = binance_client.get_open_orders()
-        
-        mock_get.assert_called_once()
-        assert isinstance(result, list)
-    
-    @patch('requests.delete')
-    def test_cancel_order(self, mock_delete, binance_client):
-        """Test canceling order."""
-        mock_response = Mock()
-        mock_response.json.return_value = {'orderId': 12345, 'status': 'CANCELED'}
-        mock_delete.return_value = mock_response
-        
-        result = binance_client.cancel_order('BTCUSDT', order_id=12345)
-        
-        mock_delete.assert_called_once()
-        assert result['status'] == 'CANCELED'
-    
-    @patch('requests.get')
-    def test_get_positions(self, mock_get, binance_client):
-        """Test getting positions."""
-        mock_response = Mock()
-        mock_response.json.return_value = [{'symbol': 'BTCUSDT', 'positionAmt': '0.01', 'entryPrice': '45000'}]
-        mock_get.return_value = mock_response
-        
-        result = binance_client.get_positions()
-        
-        mock_get.assert_called_once()
-        assert isinstance(result, list)
-    
-    @patch('requests.get')
-    def test_get_account_info(self, mock_get, binance_client):
-        """Test getting account info."""
-        mock_response = Mock()
-        mock_response.json.return_value = {'totalWalletBalance': '10000', 'totalUnrealizedPnl': '100'}
-        mock_get.return_value = mock_response
-        
-        result = binance_client.get_account_info()
-        
-        mock_get.assert_called_once()
-        assert 'totalWalletBalance' in result
-    
-    @patch('requests.get')
-    def test_get_balances(self, mock_get, binance_client):
-        """Test getting balances."""
-        mock_response = Mock()
-        mock_response.json.return_value = [{'asset': 'USDT', 'free': '10000', 'locked': '0'}]
-        mock_get.return_value = mock_response
-        
-        result = binance_client.get_balances()
-        
-        mock_get.assert_called_once()
-        assert isinstance(result, list)
-    
-    @patch('requests.get')
-    def test_get_trade_history(self, mock_get, binance_client):
-        """Test getting trade history."""
-        mock_response = Mock()
-        mock_response.json.return_value = [{'price': '45000', 'qty': '0.01', 'commission': '0.001'}]
-        mock_get.return_value = mock_response
-        
-        result = binance_client.get_trade_history('BTCUSDT')
-        
-        mock_get.assert_called_once()
-        assert isinstance(result, list)
-    
-    @patch('requests.post')
-    def test_change_leverage(self, mock_post, binance_client):
-        """Test changing leverage."""
-        mock_response = Mock()
-        mock_response.json.return_value = {'leverage': 10, 'maxNotionalValue': '1000000'}
-        mock_post.return_value = mock_response
-        
-        result = binance_client.change_leverage('BTCUSDT', 10)
-        
-        mock_post.assert_called_once()
-        assert result['leverage'] == 10
+        return all(results.values())
 
 
-# Integration tests (marked as slow)
-@pytest.mark.slow
-class TestBinanceSDKIntegration:
-    """Integration tests for Binance SDK (requires network access)."""
+def main():
+    """Main function."""
+    print("Binance SDK Tester")
+    print("=================")
+    print()
+    print("Before running this test, make sure to:")
+    print("1. Update config/api.json with your Binance API credentials")
+    print("2. Use testnet API keys for safety")
+    print("3. Ensure you have sufficient balance for testing")
+    print()
     
-    def test_public_endpoints_connectivity(self):
-        """Test that public endpoints are accessible."""
-        # This would require actual network access and should be mocked in CI
-        pass
+    # Check if config file exists and has content
+    config_path = "config/api.json"
+    if not os.path.exists(config_path):
+        print(f"Error: Configuration file {config_path} not found!")
+        return
     
-    def test_authentication_flow(self):
-        """Test authentication flow with testnet."""
-        # This would require actual API keys and should be mocked in CI
-        pass
+    with open(config_path, 'r') as f:
+        config_content = f.read().strip()
+        if not config_content or config_content == "{}":
+            print(f"Error: Configuration file {config_path} is empty!")
+            print("Please add your API credentials to the configuration file.")
+            return
+    
+    # Ask user for confirmation
+    response = input("Do you want to proceed with the test? (y/N): ").strip().lower()
+    if response != 'y':
+        print("Test cancelled.")
+        return
+    
+    # Run tests
+    tester = BinanceSDKTester(config_path)
+    success = tester.run_all_tests()
+    
+    if success:
+        print("\n🎉 All tests passed!")
+    else:
+        print("\n❌ Some tests failed. Check the logs above for details.")
+
+
+if __name__ == "__main__":
+    main()

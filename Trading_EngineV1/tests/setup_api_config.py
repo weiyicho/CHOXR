@@ -19,7 +19,7 @@ def setup_api_config():
     print()
     
     # Check if config already exists
-    config_path = "config/api.json"
+    config_path = "../config/api.json"
     if os.path.exists(config_path):
         with open(config_path, 'r') as f:
             existing_config = json.load(f)
@@ -106,7 +106,7 @@ def setup_api_config():
 
 def validate_config():
     """Validate existing configuration."""
-    config_path = "config/api.json"
+    config_path = "../config/api.json"
     
     if not os.path.exists(config_path):
         print("❌ Configuration file not found!")
