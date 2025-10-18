@@ -11,7 +11,11 @@ class BinanceFundingFetcher(ExchangeFetcher):
     
     def __init__(self, exchange, since=None):
         super().__init__(exchange, since)
-        self.storage = FundingRateStorage(self.exchange.id)
+        # Set project root to strategy1 directory
+        # src/exchanges/binance.py -> exchanges -> src -> strategy1
+        from pathlib import Path
+        project_root = Path(__file__).resolve().parent.parent.parent
+        self.storage = FundingRateStorage(self.exchange.id, project_root=project_root)
         
     def _fetch_raw_data(self, symbol, since=None, limit=None):
         all_infos = []
@@ -115,7 +119,11 @@ class BinanceKlinesFetcher(ExchangeFetcher):
     
     def __init__(self, exchange, since=None):
         super().__init__(exchange, since)
-        self.storage = KlinesStorage(self.exchange.id)
+        # Set project root to strategy1 directory
+        # src/exchanges/binance.py -> exchanges -> src -> strategy1
+        from pathlib import Path
+        project_root = Path(__file__).resolve().parent.parent.parent
+        self.storage = KlinesStorage(self.exchange.id, project_root=project_root)
         
     def _fetch_raw_data(self, symbol, since=None, limit=None):
         all_infos = []

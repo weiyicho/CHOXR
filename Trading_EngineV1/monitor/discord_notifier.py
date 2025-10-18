@@ -111,3 +111,16 @@ class DiscordNotifier:
         except Exception as e:
             print(f"Discord performance summary error: {e}")
             return False
+    def send_picture(self, pic_path, username="Webhook Bot"):
+
+        with open(pic_path, "rb") as pic_file:
+            data = {"username": username, "embeds": []}
+            files = {"file": pic_file}
+            response = requests.post(self.webhook_url, data=data, files=files)
+
+        if response.status_code == 200:
+            print("success!")
+        else:
+            print(f"error: {response.status_code}")
+
+        return response.status_code

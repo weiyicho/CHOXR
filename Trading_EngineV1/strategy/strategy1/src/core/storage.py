@@ -61,23 +61,29 @@ class BaseDataStorage(ABC):
             return Path(os.environ.get('PROJECT_ROOT'))
         
         else:
-            # Auto-detect project root (main repository directory)
+            # Auto-detect project root for strategy1
+            # This file is in strategy/strategy1/src/core/storage.py
+            # We want strategy/strategy1 as the base directory
             current_dir = Path(__file__).resolve().parent
 
-            # Prefer any directory that contains a "data" folder while walking up.
+            # Walk up the directory tree
             while current_dir != current_dir.parent:  # Stop at filesystem root
-                # If this directory contains a top-level "data" folder, use it as base.
-                if (current_dir / 'data').exists():
+                # Check if this is the strategy1 directory (contains src and data folders)
+                if current_dir.name == 'strategy1' and (current_dir / 'src').exists():
                     return current_dir
-
-                # Preserve previous behavior: detect .git or src as project root
-                if (current_dir / '.git').exists() or (current_dir / 'src').exists():
+                
+                # Fallback: detect .git as project root
+                if (current_dir / '.git').exists():
+                    # If we're in the git repo, use strategy/strategy1
+                    strategy1_dir = current_dir / 'strategy' / 'strategy1'
+                    if strategy1_dir.exists():
+                        return strategy1_dir
                     return current_dir
 
                 current_dir = current_dir.parent
             
-            # If no markers found, use default 3 levels up (src/core -> src -> root)
-            return Path(__file__).resolve().parent.parent.parent
+            # If no markers found, use default 2 levels up (src/core -> src -> strategy1)
+            return Path(__file__).resolve().parent.parent
 # ...existing code...
         
     @abstractmethod

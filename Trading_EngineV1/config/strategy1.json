@@ -1,0 +1,32 @@
+{
+  "notifier": {
+    "webhook_url": "https://discord.com/api/webhooks/1428028920719998998/PWsXq6NbEBVfiOywUxMAEWGT2Pi0UiJvZsSwO3yZRY8DdZ3aiMV67c3cm0C8L5OqovTf-_gv3TS7VYYM5bWvVfNA0-YdyS7tsFkEyc"
+  },
+  "monitor": {
+    "exchange1_id": "binance",
+    "exchange2_id": null,
+    "n_days": 2,
+    "threshold": 0.1,
+    "value_threshold": 30000000,
+    "placed_symbols": 1,
+    "_comment": "Set exchange2_id to null for single-exchange mode, or specify an exchange name (e.g., 'binance') for cross-exchange mode"
+  },
+  "output": {
+    "image_path": "funding_arbitrage_table.png",
+    "dpi": 300,
+    "delete_after_send": true
+  },
+  "result": {
+    "message": "Single-exchange (binance) - Symbols meeting conditions: []",
+    "symbols_found": 0,
+    "symbols": [],
+    "config_used": {
+      "exchange1_id": "binance",
+      "exchange2_id": null,
+      "n_days": 2,
+      "threshold": 0.1,
+      "value_threshold": 30000000,
+      "is_cross_exchange": false
+    }
+  }
+}

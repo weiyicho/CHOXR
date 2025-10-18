@@ -6,8 +6,8 @@ Cross Exchange Funding Rate Arbitrage - Core Package
 
 from pathlib import Path
 
-# 定義常用的路徑
-PROJECT_ROOT = Path(__file__).parent.parent
+# 定義常用的路徑 (strategy1 is the project root)
+PROJECT_ROOT = Path(__file__).parent.parent  # src/__init__.py -> src -> strategy1
 DATA_DIR = PROJECT_ROOT / 'data'
 RAW_DATA_DIR = DATA_DIR / 'raw'
 

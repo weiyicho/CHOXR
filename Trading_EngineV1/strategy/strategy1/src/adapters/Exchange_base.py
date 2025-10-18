@@ -24,7 +24,10 @@ class ExchangeFetcher(ABC):
         else:
             self.since = since
 
-        self.storage = FundingRateStorage(self.exchange.id)
+        # Set project root to strategy1 directory (explicit path)
+        # src/adapters/Exchange_base.py -> adapters -> src -> strategy1
+        project_root = Path(__file__).resolve().parent.parent.parent
+        self.storage = FundingRateStorage(self.exchange.id, project_root=project_root)
         self.markets = self._load_markets()
         self.symbols = self._load_supported_symbols(self.markets, self.exchange)
         self.USDT_SYMBOLS = [s for s in self._get_symbols() if s.endswith(":USDT")]
@@ -163,7 +166,10 @@ class DexFetcher(ABC):
         else:
             self.since = since
 
-        self.storage = FundingRateStorage(self.exchange)
+        # Set project root to strategy1 directory
+        # src/adapters/Exchange_base.py -> adapters -> src -> strategy1
+        project_root = Path(__file__).resolve().parent.parent.parent
+        self.storage = FundingRateStorage(self.exchange, project_root=project_root)
         self.DEFAULT_LIMIT = 150
         self.TIME_COL= 'Time'
         self.symbols = self._load_supported_symbols()

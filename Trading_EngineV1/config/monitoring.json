@@ -2,19 +2,12 @@
   "discord": {
     "webhook_url": "https://discord.com/api/webhooks/1428028920719998998/PWsXq6NbEBVfiOywUxMAEWGT2Pi0UiJvZsSwO3yZRY8DdZ3aiMV67c3cm0C8L5OqovTf",
     "channel_id": "posting_monitor",
-    "enabled": true,
-    "notifications": {
-      "trades": true,
-      "alerts": true,
-      "reports": true,
-      "errors": true
-    }
+    "enabled": true
   },
   "monitoring": {
     "interval": 5,
     "position_monitoring": true,
-    "performance_monitoring": true,
-    "health_checks": true
+    "performance_monitoring": true
   },
   "alerts": {
     "position": {
@@ -23,31 +16,10 @@
       "position_value_threshold": 1000.0,
       "leverage_threshold": 10.0,
       "margin_ratio_threshold": 0.8
-    },
-    "performance": {
-      "enabled": true,
-      "daily_loss_threshold": -100.0,
-      "drawdown_threshold": -500.0,
-      "win_rate_threshold": 30.0
-    },
-    "risk": {
-      "enabled": true,
-      "max_position_size": 1000.0,
-      "max_total_exposure": 5000.0,
-      "max_daily_trades": 50
     }
   },
   "reports": {
     "auto": true,
-    "interval_hours": 24,
-    "include_positions": true,
-    "include_performance": true,
-    "include_risk_metrics": true
-  },
-  "logging": {
-    "level": "INFO",
-    "file": "monitor/monitoring.log",
-    "max_size_mb": 10,
-    "backup_count": 5
+    "interval_hours": 24
   }
 }

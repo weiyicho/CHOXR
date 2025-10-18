@@ -27,7 +27,7 @@ class FundingRateStorage(BaseDataStorage):
         # Create the data_subdir path
         data_subdir = Path("data") / 'raw' / exchange_id / folder
         # Call parent constructor
-        super().__init__(project_root, data_subdir, self.TIME_COL)
+        super().__init__(base_dir=project_root, data_subdir=data_subdir, time_column=self.TIME_COL)
         self.exchange_id = exchange_id
 
     def _file_name_save(self, symbol: str) -> str:
@@ -87,7 +87,7 @@ class KlinesStorage(BaseDataStorage):
         # Create the data_subdir path
         data_subdir = Path("data") / 'raw' / exchange_id / folder
         # Call parent constructor
-        super().__init__(project_root, data_subdir, self.TIME_COL)
+        super().__init__(base_dir=project_root, data_subdir=data_subdir, time_column=self.TIME_COL)
         self.exchange_id = exchange_id
 
     def _file_name_save(self, symbol: str) -> str:
