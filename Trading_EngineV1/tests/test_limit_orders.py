@@ -65,7 +65,7 @@ class LimitOrderTester:
                 'position': 1000,  # Default position size
                 'leverage': 5      # Default leverage
             }
-            self.order_manager = OrderManager(order_config, "DOGEUSDT", self.client)
+            self.order_manager = OrderManager(order_config, "DOGEUSDT")
             
             self.logger.info("Binance client and OrderManager initialized successfully")
             return True
@@ -141,7 +141,7 @@ class LimitOrderTester:
                 self.logger.info(f"\n--- {order_type} {aggressiveness.upper()} ---")
                 
                 calculation = self.order_manager.calculate_limit_price(
-                    order_book, order_type, aggressiveness, market_direction, self.symbol, self.client
+                    order_book, order_type, aggressiveness
                 )
                 
                 results[f"{order_type}_{aggressiveness}"] = calculation
@@ -230,7 +230,7 @@ class LimitOrderTester:
             
             # Calculate limit price
             calculation = self.order_manager.calculate_limit_price(
-                order_book, order_type, aggressiveness, None, self.symbol, self.client
+                order_book, order_type, aggressiveness
             )
             
             self.logger.info(f"\n🎯 Order Details:")

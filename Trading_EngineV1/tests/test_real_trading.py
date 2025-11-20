@@ -50,7 +50,7 @@ class RealTradingTester:
             self.client = BinanceFuturesClient(binance_config, mock_exchange)
             
             order_config = {'position': 50, 'leverage': 5}
-            self.order_manager = OrderManager(order_config, self.symbol, self.client)
+            self.order_manager = OrderManager(order_config, self.symbol)
             
             self.logger.info("Binance client and OrderManager initialized successfully")
             return True
@@ -146,7 +146,7 @@ class RealTradingTester:
         # Step 2: Calculate limit price
         price_calc_start = time.time()
         calculation = self.order_manager.calculate_limit_price(
-            analysis['order_book'], order_type, aggressiveness, analysis['market_direction'], self.symbol, self.client
+            analysis['order_book'], order_type, aggressiveness
         )
         price_calc_end = time.time()
         

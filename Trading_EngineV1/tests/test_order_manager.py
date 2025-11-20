@@ -341,9 +341,7 @@ def test_complete_price_calculation_with_tick_size():
             result = order_manager.calculate_limit_price(
                 order_book=order_book,
                 order_type=order_type,
-                aggressiveness=aggressiveness,
-                symbol='DOGEUSDT',
-                exchange_client=mock_client
+                aggressiveness=aggressiveness
             )
             
             # Verify tick size is included

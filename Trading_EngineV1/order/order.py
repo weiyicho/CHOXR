@@ -3,13 +3,16 @@ from itertools import accumulate
 from bisect import bisect_left
 
 class OrderManager():
-    def __init__(self, config, symbol, exchange_client=None):
+    """Order management system with tick size abstraction."""
+    def __init__(self, config, symbol, tick_size=None):
         self.symbol = symbol
         self.position = config['position']
         self.leverage = config['leverage']
         self.spot, self.margin = self.calculate_margin()
-        # 如果提供了 exchange_client，使用它；否則創建一個新的 BinanceFuturesClient
-    def calculate_margin(self,):
+        # Use provided tick_size or default
+        self.tick_size = tick_size or self._get_default_tick_size(symbol)
+    
+    def calculate_margin(self):
         spot = self.position * (1 - (1 / (self.leverage + 1)))
         margin = self.position - spot
         print(f"Position: {self.position}, Leverage: {self.leverage}, Margin: {margin}, Spot: {spot},spot + margin: {spot + margin}")
@@ -44,17 +47,7 @@ class OrderManager():
         return obi
     
     def calculate_percentile_price(self, order_book, percentile, side='asks'):
-        """
-        Calculate price at given percentile of order book side.
-        
-        Args:
-            order_book: Order book data with 'bids' and 'asks'
-            percentile: Percentile (0.25 for 25%, 0.75 for 75%)
-            side: 'bids' or 'asks'
-            
-        Returns:
-            Price at the specified percentile
-        """
+        """Calculate price at given percentile of order book side."""
         if side not in ['bids', 'asks']:
             raise ValueError("Side must be 'bids' or 'asks'")
         
@@ -83,15 +76,7 @@ class OrderManager():
         return prices[i]
     
     def analyze_market_direction(self, order_book):
-        """
-        Analyze market direction based on order book imbalance.
-        
-        Args:
-            order_book: Order book data
-            
-        Returns:
-            'UP', 'DOWN', or 'NEUTRAL'
-        """
+        """Analyze market direction based on order book imbalance."""
         obi = self.OBI(order_book)
         obiv = self.OBIV(order_book)
         
@@ -105,81 +90,10 @@ class OrderManager():
         else:
             return 'NEUTRAL'
     
-    def get_symbol_tick_size(self, symbol, exchange_client):
-        """
-        Get tick size for a symbol from exchange info.
-        
-        Args:
-            symbol: Trading pair symbol (e.g., 'DOGEUSDT')
-            exchange_client: Exchange client to get symbol info
-            
-        Returns:
-            Tick size as float
-        """
-        try:
-            exchange_info = exchange_client.get_exchange_info()
-            for s in exchange_info.get('symbols', []):
-                if s.get('symbol') == symbol:
-                    # Look for PRICE_FILTER to get tick size
-                    price_filter = next((f for f in s.get('filters', []) if f.get('filterType') == 'PRICE_FILTER'), None)
-                    if price_filter:
-                        tick_size = float(price_filter.get('tickSize', '0.00001'))
-                        return tick_size
-            # Default tick size if not found
-            return 0.00001
-        except Exception as e:
-            print(f"Warning: Could not get tick size for {symbol}: {e}")
-            return 0.00001
-    
-    def round_to_tick_size(self, price, tick_size):
-        """
-        Round price to conform to tick size requirements.
-        
-        Args:
-            price: Price to round
-            tick_size: Tick size increment
-            
-        Returns:
-            Price rounded to tick size
-        """
-        if tick_size <= 0:
-            return price
-        
-        # Use decimal arithmetic to avoid floating-point precision issues
-        from decimal import Decimal, ROUND_HALF_UP
-        
-        # Convert to Decimal for precise arithmetic
-        price_decimal = Decimal(str(price))
-        tick_size_decimal = Decimal(str(tick_size))
-        
-        # Calculate how many tick size increments fit into the price
-        ticks_float = price_decimal / tick_size_decimal
-        
-        # Round to nearest integer using ROUND_HALF_UP
-        ticks = int(ticks_float.quantize(Decimal('1'), rounding=ROUND_HALF_UP))
-        
-        # Convert back to float
-        result = float(ticks * tick_size_decimal)
-        
-        return result
-    
-    def calculate_limit_price(self, order_book, order_type, aggressiveness, market_direction=None, symbol=None, exchange_client=None):
-        """
-        Calculate optimal limit order price based on market analysis.
-        
-        Args:
-            order_book: Order book data
-            order_type: 'BUY' or 'SELL'
-            aggressiveness: 'conservative' or 'aggressive'
-            market_direction: 'UP', 'DOWN', 'NEUTRAL' (auto-detect if None)
-            symbol: Trading pair symbol (e.g., 'DOGEUSDT')
-            exchange_client: Exchange client to get tick size info
-            
-        Returns:
-            Dictionary with calculated price and analysis
-        """
-        if market_direction is None:
-            market_direction = self.analyze_market_direction(order_book)
+    def calculate_limit_price(self, order_book, order_type, aggressiveness):
+        """Calculate optimal limit order price based on market analysis."""
+        # Auto-detect market direction
+        market_direction = self.analyze_market_direction(order_book)
         
         # Determine percentile based on aggressiveness
         if aggressiveness == 'conservative':
@@ -197,10 +111,8 @@ class OrderManager():
         current_bid = float(order_book['bids'][0][0]) if order_book['bids'] else None
         current_ask = float(order_book['asks'][0][0]) if order_book['asks'] else None
         
-        # Get tick size for the symbol
-        tick_size = 0.00001  # Default fallback
-        if symbol and exchange_client:
-            tick_size = self.get_symbol_tick_size(symbol, exchange_client)
+        # Use instance tick size (no SDK dependency)
+        tick_size = self.tick_size
         
         # Determine limit price based on order type and strategy
         if order_type == 'BUY':
@@ -237,6 +149,72 @@ class OrderManager():
             'obi': self.OBI(order_book),
             'obiv': self.OBIV(order_book)
         }
+    
+    def update_tick_size(self, new_tick_size):
+        """
+        Update the tick size for this order manager.
         
-
-
+        Args:
+            new_tick_size: New tick size value
+        """
+        if new_tick_size <= 0:
+            raise ValueError("Tick size must be positive")
+        self.tick_size = new_tick_size
+        print(f"Updated tick size for {self.symbol} to {new_tick_size}")
+    
+    def get_tick_size(self):
+        """Get current tick size."""
+        return self.tick_size
+    
+    def _get_default_tick_size(self, symbol):
+        """Get default tick size for a symbol."""
+        tick_size_map = {
+            'BTCUSDT': 0.01,
+            'ETHUSDT': 0.01,
+            'DOGEUSDT': 0.00001,
+            'ADAUSDT': 0.0001,
+            'SOLUSDT': 0.001,
+            'MATICUSDT': 0.0001,
+            'AVAXUSDT': 0.01,
+            'DOTUSDT': 0.001,
+            'LINKUSDT': 0.001,
+            'UNIUSDT': 0.001,
+        }
+        return tick_size_map.get(symbol, 0.00001)
+    
+    def round_to_tick_size(self, price, tick_size):
+        """Round price to conform to tick size requirements."""
+        if tick_size <= 0:
+            return price
+        
+        from decimal import Decimal, ROUND_HALF_UP
+        
+        price_decimal = Decimal(str(price))
+        tick_size_decimal = Decimal(str(tick_size))
+        ticks_float = price_decimal / tick_size_decimal
+        ticks = int(ticks_float.quantize(Decimal('1'), rounding=ROUND_HALF_UP))
+        result = float(ticks * tick_size_decimal)
+        
+        return result
+    
+    def set_tick_size_from_symbol(self, symbol):
+        """Set tick size based on symbol using the default mapping."""
+        self.tick_size = self._get_default_tick_size(symbol)
+        print(f"Set tick size for {symbol} to {self.tick_size}")
+    
+    def validate_tick_size(self, price):
+        """Validate if a price conforms to the current tick size."""
+        if self.tick_size <= 0:
+            return True
+        
+        remainder = price % self.tick_size
+        return abs(remainder) < 1e-10 or abs(remainder - self.tick_size) < 1e-10
+    
+    def get_tick_size_info(self):
+        """Get comprehensive tick size information."""
+        return {
+            'symbol': self.symbol,
+            'tick_size': self.tick_size,
+            'is_default': self.tick_size == self._get_default_tick_size(self.symbol),
+            'default_tick_size': self._get_default_tick_size(self.symbol)
+        }

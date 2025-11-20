@@ -42,14 +42,11 @@ class MonitoringSystemTester:
             
         # Initialize exchange client
         if self.api_key and self.api_secret:
-            self.exchange_client = BinanceFuturesClient(
-                api_key=self.api_key,
-                api_secret=self.api_secret,
-                testnet=self.testnet
-            )
+            binance_config = api_config.get('binance', {})
+            mock_exchange = type('MockExchange', (), {'id': 'binance'})()
+            self.exchange_client = BinanceFuturesClient(binance_config, mock_exchange)
         else:
             self.exchange_client = None
-            self.logger.warning("API credentials not configured, using mock client")
             
     def test_discord_notifications(self):
         """Test Discord notification system."""
@@ -90,25 +87,35 @@ class MonitoringSystemTester:
         )
         print(f"Embed message: {'✅ Success' if success else '❌ Failed'}")
         
-        # Test trade notification
+        # Test trade notification using send_embed
         print("Testing trade notification...")
-        success = notifier.notify_order_placed(
-            symbol="DOGEUSDT",
-            side="BUY",
-            quantity=100.0,
-            price=0.08,
-            order_type="LIMIT",
-            account_type="TEST"
+        success = notifier.send_embed(
+            title="📈 Order Placed",
+            description="Test trade notification",
+            color=0x00ff00,
+            fields=[
+                {"name": "Symbol", "value": "DOGEUSDT", "inline": True},
+                {"name": "Side", "value": "BUY", "inline": True},
+                {"name": "Quantity", "value": "100.0", "inline": True},
+                {"name": "Price", "value": "$0.08", "inline": True},
+                {"name": "Type", "value": "LIMIT", "inline": True},
+                {"name": "Account", "value": "TEST", "inline": True}
+            ]
         )
         print(f"Trade notification: {'✅ Success' if success else '❌ Failed'}")
         
-        # Test order filled notification
+        # Test order filled notification using send_embed
         print("Testing order filled notification...")
-        success = notifier.notify_order_filled(
-            symbol="DOGEUSDT",
-            side="BUY",
-            quantity=100.0,
-            avg_price=0.0801
+        success = notifier.send_embed(
+            title="✅ Order Filled",
+            description="Test order filled notification",
+            color=0x0099ff,
+            fields=[
+                {"name": "Symbol", "value": "DOGEUSDT", "inline": True},
+                {"name": "Side", "value": "BUY", "inline": True},
+                {"name": "Quantity", "value": "100.0", "inline": True},
+                {"name": "Avg Price", "value": "$0.0801", "inline": True}
+            ]
         )
         print(f"Order filled notification: {'✅ Success' if success else '❌ Failed'}")
         

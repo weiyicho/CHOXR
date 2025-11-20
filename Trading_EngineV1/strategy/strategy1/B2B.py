@@ -10,8 +10,14 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pandas as pd
 
 # Local imports
-from src.utils import get_order_book
-from src import Create_funding_fetcher, Create_klines_fetcher
+try:
+    from src.utils import get_order_book
+    from src import Create_funding_fetcher, Create_klines_fetcher
+except ImportError:
+    # Fallback if src module not found
+    get_order_book = None
+    Create_funding_fetcher = None
+    Create_klines_fetcher = None
 class B2B_monitor():
     def __init__(self, config_path=None):
         """
@@ -21,14 +27,20 @@ class B2B_monitor():
             config_path: Path to strategy1.json configuration file
         """
         # Import here to avoid circular imports
-        import json
+        import sys
+        project_root = os.path.join(os.path.dirname(__file__), '..', '..')
+        if project_root not in sys.path:
+            sys.path.append(project_root)
+        from util.config_manager import get_strategy_config
         
-        # Load configuration
+        # Load configuration using ConfigManager
         if config_path is None:
-            config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'config', 'strategy1.json')
-        
-        with open(config_path, 'r') as f:
-            self.config = json.load(f)
+            self.config = get_strategy_config("strategy1")
+        else:
+            # Fallback to direct loading if specific path provided
+            import json
+            with open(config_path, 'r') as f:
+                self.config = json.load(f)
         
         # Extract configuration from existing 'monitor' section
         monitor_config = self.config.get('monitor', {})
@@ -48,13 +60,6 @@ class B2B_monitor():
         self.cleanup_enabled = True
         self.days_to_keep = 7
         
-        # Fixed sorting configuration
-        self.sorting_config = {
-            'primary': 'annual_fr',
-            'secondary': 'position',
-            'ascending_primary': False,
-            'ascending_secondary': False
-        }
         since = datetime.now() - timedelta(days=self.n_days+3)
         
         # Set up exchanges and paths based on mode
@@ -63,21 +68,54 @@ class B2B_monitor():
             self.exchange1_id = exchanges[0]
             self.exchange2_id = exchanges[1]
             
-            self.exchange1 = Create_funding_fetcher(self.exchange1_id, since=since)
-            self.exchange1_klines = Create_klines_fetcher(self.exchange1_id, since=since)
-            self.exchange2 = Create_funding_fetcher(self.exchange2_id, since=since)
-            self.exchange2_klines = Create_klines_fetcher(self.exchange2_id, since=since)
-            self.shared_symbols = set(self.exchange1.USDT_SYMBOLS).intersection(set(self.exchange2.USDT_SYMBOLS))
+            if Create_funding_fetcher is not None and Create_klines_fetcher is not None:
+                self.exchange1 = Create_funding_fetcher(self.exchange1_id, since=since)
+                self.exchange1_klines = Create_klines_fetcher(self.exchange1_id, since=since)
+                self.exchange2 = Create_funding_fetcher(self.exchange2_id, since=since)
+                self.exchange2_klines = Create_klines_fetcher(self.exchange2_id, since=since)
+                self.shared_symbols = set(self.exchange1.USDT_SYMBOLS).intersection(set(self.exchange2.USDT_SYMBOLS))
+            else:
+                # Fallback if functions not available
+                self.exchange1 = None
+                self.exchange1_klines = None
+                self.exchange2 = None
+                self.exchange2_klines = None
+                self.shared_symbols = set()
             self.path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'merge', f'{self.exchange1_id}_{self.exchange2_id}', 'funding_rates')
             print(f"Initialized B2B_monitor (Cross-exchange): {self.exchange1_id} vs {self.exchange2_id} | Threshold: {self.threshold}")
         else:
-            self.exchange1 = Create_funding_fetcher(self.exchange1_id, since=since)
-            self.exchange1_klines = Create_klines_fetcher(self.exchange1_id, since=since)
+            if Create_funding_fetcher is not None and Create_klines_fetcher is not None:
+                self.exchange1 = Create_funding_fetcher(self.exchange1_id, since=since)
+                self.exchange1_klines = Create_klines_fetcher(self.exchange1_id, since=since)
+            else:
+                # Fallback if functions not available
+                self.exchange1 = None
+                self.exchange1_klines = None
             self.exchange2 = None
             self.exchange2_klines = None
-            self.shared_symbols = set(self.exchange1.USDT_SYMBOLS)
+            if self.exchange1 is not None:
+                self.shared_symbols = set(self.exchange1.USDT_SYMBOLS)
+            else:
+                self.shared_symbols = set()
             self.path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'clean', self.exchange1_id, 'funding_rates')
             print(f"Initialized B2B_monitor (Single-exchange): {self.exchange1_id} | Threshold: {self.threshold}")
+        
+        # Set up dynamic sorting configuration based on mode
+        if self.is_cross_exchange:
+            self.sorting_config = {
+                'primary': 'annual_fr_diff',  # Use the difference for cross-exchange
+                'secondary': f'{self.exchange1_id}_long/short',
+                'ascending_primary': False,
+                'ascending_secondary': False
+            }
+        else:
+            self.sorting_config = {
+                'primary': 'annual_fr',  # Use absolute funding rate for single exchange
+                'secondary': 'position',
+                'ascending_primary': False,
+                'ascending_secondary': False
+            }
+    
     def _normalize_symbol(self, symbol):
         # Remove common suffixes that might be in the symbol
         for suffix in ['/USDT:USDT', '/USDT', ':USDT']:
@@ -279,8 +317,13 @@ class B2B_monitor():
                     
                     if last_signal < 0:
                         # Negative diff: exchange2 FR < exchange1 FR → LONG exchange1, SHORT exchange2
-                        other_exchanges_price = get_order_book(symbol, exchange=self.exchange1_id, limit=5)
-                        hyperliquid = get_order_book(symbol, exchange=self.exchange2_id, limit=5)
+                        if get_order_book is not None:
+                            other_exchanges_price = get_order_book(symbol, exchange=self.exchange1_id, limit=5)
+                            hyperliquid = get_order_book(symbol, exchange=self.exchange2_id, limit=5)
+                        else:
+                            # Fallback if get_order_book not available
+                            other_exchanges_price = None
+                            hyperliquid = None
 
                         return_df['annual_fr_diff'] = round(return_df[f'{self.exchange2_id}_annual_fr'] - return_df[f'{self.exchange1_id}_annual_fr'], 4)
                         return_df['spread'] = round((hyperliquid.head(1)['bids'].values[0][0] - other_exchanges_price.tail(1)['asks'].values[0][0]) / hyperliquid.head(1)['bids'].values[0][0], 4)
@@ -289,8 +332,13 @@ class B2B_monitor():
                         return True, return_df
                     elif last_signal > 0:
                         # Positive diff: exchange1 FR < exchange2 FR → SHORT exchange1, LONG exchange2
-                        other_exchanges_price = get_order_book(symbol, exchange=self.exchange1_id, limit=5)
-                        hyperliquid = get_order_book(symbol, exchange=self.exchange2_id, limit=5)
+                        if get_order_book is not None:
+                            other_exchanges_price = get_order_book(symbol, exchange=self.exchange1_id, limit=5)
+                            hyperliquid = get_order_book(symbol, exchange=self.exchange2_id, limit=5)
+                        else:
+                            # Fallback if get_order_book not available
+                            other_exchanges_price = None
+                            hyperliquid = None
 
                         return_df['annual_fr_diff'] = round(return_df[f'{self.exchange1_id}_annual_fr'] - return_df[f'{self.exchange2_id}_annual_fr'], 4)
                         return_df['spread'] = round((other_exchanges_price.tail(1)['asks'].values[0][0] - hyperliquid.head(1)['bids'].values[0][0]) / other_exchanges_price.tail(1)['asks'].values[0][0], 4)
@@ -371,49 +419,58 @@ class B2B_monitor():
             if self.max_symbols and len(result_df) > self.max_symbols:
                 result_df = result_df.head(self.max_symbols)
             
-            result_df = result_df.sort_values(
-                by=[primary_col, secondary_col], 
-                ascending=[primary_asc, secondary_asc]
-            ).reset_index(drop=True)
+            # Sort with error handling for missing columns
+            try:
+                result_df = result_df.sort_values(
+                    by=[primary_col, secondary_col], 
+                    ascending=[primary_asc, secondary_asc]
+                ).reset_index(drop=True)
+            except KeyError as e:
+                print(f"Warning: Column {e} not found in DataFrame. Available columns: {list(result_df.columns)}")
+                # Fallback: sort by first available column
+                if len(result_df) > 0:
+                    available_cols = [col for col in [primary_col, secondary_col] if col in result_df.columns]
+                    if available_cols:
+                        result_df = result_df.sort_values(by=available_cols[0], ascending=primary_asc).reset_index(drop=True)
+                    else:
+                        print("No valid sorting columns found, keeping original order")
         # Return message based on mode
         if self.is_cross_exchange:
             return f"Cross-exchange ({self.exchange1_id}/{self.exchange2_id}) - Symbols meeting conditions: {result}", result_df
         else:
             return f"Single-exchange ({self.exchange1_id}) - Symbols meeting conditions: {result}", result_df
 
-    def save_results_to_json(self, result_message, result_df, config_path=None, ):
+    def save_results_to_json(self, result_message, result_df, config_path=None):
         import json
         from datetime import datetime
         
-        # Default config path
-        if config_path is None:
-            config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'config', 'strategy1.json')
+        # Save to result.json in the strategy1 directory
+        result_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'result.json')
         
         try:
-            # Load existing config
-            with open(config_path, 'r') as f:
-                config = json.load(f)
-            
             # Prepare results data
             results_data = {
-                "message": result_message,
-                "symbols_found": len(result_df) if not result_df.empty else 0,
-                "symbols": result_df.to_dict('records') if not result_df.empty else [],
-                "config_used": {
-                    "exchange1_id": self.exchange1_id,
-                    "exchange2_id": self.exchange2_id,
-                    "n_days": self.n_days,
-                    "threshold": self.threshold,
-                    "value_threshold": self.value_threshold,
-                    "is_cross_exchange": self.is_cross_exchange
-                },
-                "num_placed_symbols": result_df['symbol'].iloc[:config['monitor']['placed_symbols']]
+                "result": {
+                    "message": result_message,
+                    "symbols_found": len(result_df) if not result_df.empty else 0,
+                    "symbols": result_df.to_dict('records') if not result_df.empty else [],
+                    "config_used": {
+                        "exchange1_id": self.exchange1_id,
+                        "exchange2_id": self.exchange2_id,
+                        "n_days": self.n_days,
+                        "threshold": self.threshold,
+                        "value_threshold": self.value_threshold,
+                        "is_cross_exchange": self.is_cross_exchange
+                    },
+                    "num_placed_symbols": result_df['symbol'].iloc[:self.config.get('monitor', {}).get('placed_symbols', 1)].tolist() if not result_df.empty else []
+                }
             }
-            config["result"] = results_data
-            with open(config_path, 'w') as f:
-                json.dump(config, f, indent=2)
             
-            print(f"✅ Results saved to {config_path}")
+            # Save to result.json
+            with open(result_file_path, 'w') as f:
+                json.dump(results_data, f, indent=2)
+            
+            print(f"✅ Results saved to {result_file_path}")
             return True
             
         except Exception as e:

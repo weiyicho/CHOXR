@@ -22,6 +22,7 @@ class BinanceDataStream():
     def __init__(self):
         self._market_endpoint = 'https://fapi.binance.com'
         self._session = None  # Placeholder for an HTTP session or client
+        self._timeout = 30  # Default timeout for requests
 
 
     def _process_api_response(self, response: requests.Response) -> Any:
@@ -87,11 +88,16 @@ class BinanceDataStream():
         
         Args:
             symbol: Trading pair symbol
-            limit: Number of orders to retrieve (max 5000)
+            limit: Number of orders to retrieve (valid values: 5, 10, 20, 50, 100, 500, 1000, 5000)
             
         Returns:
             Order book data
         """
+        # Validate limit parameter
+        valid_limits = [5, 10, 20, 50, 100, 500, 1000, 5000]
+        if limit not in valid_limits:
+            limit = 5  # Default to minimum valid limit
+            
         return self._make_public_request('/fapi/v1/depth', {'symbol': symbol, 'limit': limit})
 
     def get_recent_trades(self, symbol: str, limit: Optional[int] = None) -> list:
@@ -119,4 +125,29 @@ class BinanceDataStream():
         """
         r = requests.get('https://api.binance.com/api/v3/ticker/price', params={'symbol': symbol}, timeout=self._timeout)
         return self._process_api_response(r)['price']
+    
+    def get_ticker_price(self, symbol: str) -> Dict[str, Any]:
+        """
+        Get 24hr ticker price statistics for a symbol.
+        
+        Args:
+            symbol: Trading pair symbol
+            
+        Returns:
+            Ticker price statistics
+        """
+        return self._make_public_request('/fapi/v1/ticker/24hr', {'symbol': symbol})
+    
+    def get_current_price(self, symbol: str) -> float:
+        """
+        Get current price for a symbol (futures).
+        
+        Args:
+            symbol: Trading pair symbol
+            
+        Returns:
+            Current price as float
+        """
+        ticker = self.get_ticker_price(symbol)
+        return float(ticker['lastPrice'])
 
