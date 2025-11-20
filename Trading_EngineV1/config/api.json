@@ -1,7 +1,7 @@
 {
     "binance": {
-        "api_key": "iDwkpZ3q2nCXXzGY79lLZJlR3ehkodG3gGZWN03FkkfNCvJBZcKrA77WZYv8PcZy",
-        "api_secret": "3D10pi38jHr50rkbmrRyFObWhPYYPB3fCgQQs9EQi7sJHNObF1nP8krPJg8I45dB",
+        "api_key": "",
+        "api_secret": "",
         "testnet": false,
         "timeout": 30,
         "base_url": "https://api.binance.com",
