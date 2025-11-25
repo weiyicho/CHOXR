@@ -210,7 +210,9 @@ class RealTradingBot():
             quantity=quantity,
         )
         self.logger.info(f"✅ Deleveraged position for {symbol}")
-            
+    
+    def check_leverage(self):
+        pass
         
         
         

@@ -12,17 +12,23 @@ Trading_EngineV1/
 ├── order/                  # Order execution and price calculation
 ├── monitor/                # Discord notifications and monitoring
 ├── websocket/              # Real-time data streams
+├── util/                   # Utility functions and config management
+├── tests/                  # Comprehensive test suite
 └── strategy/strategy1/     # Trading strategy implementation
-    ├── src/                # Core strategy logic
+    ├── src/                # Core strategy logic & research notebooks
     ├── pipeline/           # Data processing pipeline
-    └── data/               # Market data storage
+    ├── data/               # Market data storage
+    └── main.py             # Strategy entry point
 ```
 
 **Key Modules:**
-- **src/**: Exchange interface layer - unified APIs for multiple exchanges
+- **src/**: Exchange interface layer - unified APIs for multiple exchanges (Binance, Bybit)
 - **config/**: JSON-based configuration management for API keys and parameters
-- **risk/**: Trade validation, position limits, and exposure monitoring
+- **risk/**: Portfolio margin account risk management, liquidation prevention, and exposure monitoring
+- **order/**: Order management with tick size abstraction and limit price calculation
+- **monitor/**: Discord notifications, performance tracking, and position monitoring
 - **strategy/**: Signal generation, order logic, and strategy orchestration
+- **tests/**: Extensive testing suite covering SDK, risk management, and live trading scenarios
 
 ## Build, Test, and Development Commands
 
@@ -31,9 +37,12 @@ Trading_EngineV1/
 # Install dependencies
 pip install -r requirements.txt
 
-# Run strategy development
-cd strategy/strategy1
-python -m src.research  # Jupyter notebook for strategy research
+# Run strategy development (Jupyter Notebook)
+# Open strategy/strategy1/src/research.ipynb in your preferred editor or run:
+jupyter notebook strategy/strategy1/src/research.ipynb
+
+# Run Strategy / Check Account Status
+python strategy/strategy1/main.py
 
 # Test exchange connectivity
 python -c "from src.binance_sdk import BinanceFuturesClient; print('SDK ready')"
@@ -60,8 +69,8 @@ python pipeline/merge.py
 **File Organization:**
 - One class per file for core components
 - Use `__init__.py` files for package exports
-- Store configuration in JSON format
-- Keep sensitive credentials in separate config files
+- Store configuration in JSON format (`config/api.json`)
+- Keep sensitive credentials in separate config files (excluded from version control)
 
 **Import Conventions:**
 ```python
@@ -74,7 +83,8 @@ import pandas as pd
 import requests
 
 # Local modules
-from .adapters.storage import FundingRateStorage
+from util.config_manager import get_api_config
+from monitor.discord_notifier import DiscordNotifier
 ```
 
 ## Testing Guidelines
@@ -82,13 +92,17 @@ from .adapters.storage import FundingRateStorage
 **Testing Framework:**
 - Target 80% code coverage minimum for core modules
 - Mock exchange APIs for deterministic testing
-- Unit tests under `/tests/` directory (to be implemented)
+- Comprehensive test suite in `/tests/` directory covering:
+  - Unit tests for SDK and Utils
+  - Integration tests for Risk and Order modules
+  - Live trading tests (DOGE/USDT)
+  - Discord monitoring tests
 
 **Testing Strategy:**
 - Mock external API responses for exchange SDKs
 - Use synthetic data for strategy validation
 - Test risk calculations with known scenarios
-- Validate order execution logic without live trading
+- Validate order execution logic with both mock and live (testnet) environments
 
 **Test Naming:**
 - Test files: `test_module_name.py`

@@ -218,3 +218,5 @@ class OrderManager():
             'is_default': self.tick_size == self._get_default_tick_size(self.symbol),
             'default_tick_size': self._get_default_tick_size(self.symbol)
         }
+    def calculate_deleverage(self):
+        pass

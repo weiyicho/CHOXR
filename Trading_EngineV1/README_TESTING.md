@@ -2,47 +2,56 @@
 
 ## Quick Start
 
-### 1. Setup API Configuration
+### 1. Setup Configuration
 ```bash
+# Setup API Keys
 python3 tests/setup_api_config.py
-```
-Follow the interactive prompts to enter your Binance API credentials.
 
-### 2. Test the SDK
+# Setup Discord Webhook (Optional but recommended)
+python3 tests/setup_discord_webhook.py
+```
+Follow the interactive prompts to enter your credentials.
+
+### 2. Run Core Tests
 ```bash
+# Test Binance SDK Connectivity
 python3 tests/test_binance_sdk.py
+
+# Test Monitoring System
+python3 tests/test_monitoring_system.py
 ```
 
-### 3. Test Monitoring System
+### 3. Advanced Testing
 ```bash
-python3 tests/test_monitoring_system.py
+# Test Margin Trading Logic
+python3 tests/test_margin_orders.py
+
+# Test Risk Management Integration
+python3 tests/test_risk_manager_integration.py
+
+# Test Real Trading (DOGE/USDT - Small amounts)
+python3 tests/test_dogeusdt_trading.py
 ```
 
 ## What Gets Tested
 
-### Public Endpoints (No Authentication Required)
-- ✅ Exchange information
-- ✅ Order book data
-- ✅ Recent trades
-- ✅ Candlestick data (klines)
-- ✅ Spot prices
+### Core Infrastructure
+- ✅ Exchange information & Connectivity
+- ✅ Account authentication & Balances
+- ✅ Discord Webhook integration (`test_discord_realtime.py`)
+- ✅ Position Monitoring (`test_position_monitor.py`)
 
-### Private Endpoints (Authentication Required)
-- ✅ Account information
-- ✅ Account balances
-- ✅ Current positions
-- ✅ Open orders
-
-### Order Operations
-- ✅ Buy/Sell cycle testing with DOGE (max $6 value)
-- ✅ Market orders for immediate execution
-- ✅ Automatic precision handling
-- ✅ Real-time P&L calculation
-- ✅ Order status tracking
+### Trading Logic
+- ✅ Limit Orders (`test_limit_orders.py`)
+- ✅ Market Orders
+- ✅ Margin Trading (`test_margin_orders.py`)
+- ✅ Order Management & Tracking (`test_order_manager.py`)
 
 ### Risk Management
-- ✅ Change leverage
-- ✅ Trade history
+- ✅ Position Limits
+- ✅ Leverage Checks
+- ✅ Exposure Monitoring
+- ✅ Risk Integration (`test_risk_manager_integration.py`)
 
 ## Configuration
 
@@ -53,15 +62,24 @@ The API configuration is stored in `config/api.json`:
   "binance": {
     "api_key": "your_api_key",
     "api_secret": "your_api_secret",
+    "testnet": false,
+    "timeout": 30,
+    "base_url": "https://api.binance.com",
+    "futures_url": "https://fapi.binance.com"
+  },
+  "bybit": {
+    "api_key": "YOUR_BYBIT_API_KEY_HERE",
+    "api_secret": "YOUR_BYBIT_API_SECRET_HERE",
     "testnet": true,
-    "timeout": 30
+    "timeout": 30,
+    "base_url": "https://api-testnet.bybit.com"
   }
 }
 ```
 
 ## Security Notes
 
-- 🔒 Use testnet API keys for development
+- 🔒 Use testnet for development (set `"testnet": true`)
 - 🔒 Never commit real API keys to version control
 - 🔒 The `.gitignore` file excludes `config/api.json` from being committed
 - 🔒 API secrets are hidden during input
