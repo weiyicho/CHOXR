@@ -44,6 +44,7 @@ ENV/
 *.csv
 *.json
 !config/*.json
+!config/**/*.json
 !requirements.txt
 !AGENTS.md
 
@@ -59,3 +60,4 @@ Thumbs.db
 .coverage
 htmlcov/
 .pytest_cache/
+pytest.ini
