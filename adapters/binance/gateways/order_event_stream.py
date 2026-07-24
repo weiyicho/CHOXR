@@ -62,8 +62,8 @@ class PortfolioMarginOrderEventStream:
     """Own the PAPI websocket and normalize only order lifecycle messages.
 
     Binance listen keys are kept alive before their documented 60-minute
-    expiry.  Connections are rotated shortly before the documented 24-hour
-    lifetime and transient disconnects use bounded reconnect backoff.
+    expiry.  Connections are proactively rotated every 12 hours and transient
+    disconnects use bounded reconnect backoff.
     """
 
     def __init__(
@@ -75,7 +75,7 @@ class PortfolioMarginOrderEventStream:
         sleep: Sleep = asyncio.sleep,
         run_sync: RunSync = asyncio.to_thread,
         keepalive_interval_seconds: float = 45 * 60,
-        max_connection_age_seconds: float = 23 * 60 * 60 + 50 * 60,
+        max_connection_age_seconds: float = 12 * 60 * 60,
         reconnect_backoff_seconds: tuple[float, ...] = (1, 2, 5, 10, 20, 30),
     ) -> None:
         if keepalive_interval_seconds <= 0:
@@ -161,7 +161,7 @@ class PortfolioMarginOrderEventStream:
                     if self._stop_requested.is_set():
                         break
                     if reason == "rotate":
-                        # The listen key is still valid.  Reopen only the 24h
+                        # The listen key is still valid.  Reopen only the
                         # websocket so Binance can continue buffering the same
                         # account stream while the new connection is created.
                         self._emit_lifecycle(

@@ -58,19 +58,34 @@ class MakerPriceParameters:
     """Exchange-independent knobs for a post-only maker quote.
 
     A quote starts at the best price on our side of the book.  It may improve
-    by ``improve_ticks`` unconditionally, and by ``pressure_ticks`` when the
-    combined OBI/OBIV signal indicates pressure in the order direction.
+    by ``improve_ticks`` unconditionally.  ``pressure_ticks`` is the maximum
+    additional improvement when the combined OBI/OBIV signal favors faster
+    execution.  The additional ticks scale with signal strength instead of
+    switching on as one binary step.
+
+    ``depth_decay`` weights level ``n`` by ``depth_decay ** n`` so callers can
+    make near-touch liquidity more important without changing the policy.
+    OBI and OBIV weights are normalized by their sum.  The resulting tick
+    improvement is capped at the top-of-book microprice so a quote does not
+    chase through its short-horizon fair-value estimate.
     """
 
     improve_ticks: int = 0
     pressure_ticks: int = 1
     imbalance_threshold: Decimal = Decimal("0.10")
     depth_levels: int | None = None
+    depth_decay: Decimal = ONE
+    quantity_imbalance_weight: Decimal = Decimal("0.50")
+    value_imbalance_weight: Decimal = Decimal("0.50")
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "imbalance_threshold", _decimal(self.imbalance_threshold)
-        )
+        for name in (
+            "imbalance_threshold",
+            "depth_decay",
+            "quantity_imbalance_weight",
+            "value_imbalance_weight",
+        ):
+            object.__setattr__(self, name, _decimal(getattr(self, name)))
         if self.improve_ticks < 0:
             raise ValueError("improve_ticks cannot be negative")
         if self.pressure_ticks < 0:
@@ -79,6 +94,17 @@ class MakerPriceParameters:
             raise ValueError("imbalance_threshold must be in [0, 1]")
         if self.depth_levels is not None and self.depth_levels <= 0:
             raise ValueError("depth_levels must be positive")
+        if not ZERO < self.depth_decay <= ONE:
+            raise ValueError("depth_decay must be in (0, 1]")
+        if self.quantity_imbalance_weight < ZERO:
+            raise ValueError("quantity_imbalance_weight cannot be negative")
+        if self.value_imbalance_weight < ZERO:
+            raise ValueError("value_imbalance_weight cannot be negative")
+        if (
+            self.quantity_imbalance_weight + self.value_imbalance_weight
+            == ZERO
+        ):
+            raise ValueError("at least one imbalance weight must be positive")
 
 
 @dataclass(frozen=True)
@@ -100,6 +126,11 @@ class PriceQuote:
     order_book_value_imbalance: Decimal
     combined_imbalance: Decimal
     applied_ticks: int
+    directional_pressure: Decimal = ZERO
+    pressure_ratio: Decimal = ZERO
+    available_improve_ticks: int = 0
+    microprice: Decimal = ZERO
+    fair_value_improve_ticks: int = 0
 
 
 @dataclass(frozen=True)

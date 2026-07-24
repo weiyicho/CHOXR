@@ -557,7 +557,7 @@ def test_network_keeps_listen_key_alive_before_sixty_minutes():
     asyncio.run(scenario())
 
 
-def test_network_rotates_listen_key_before_twenty_four_hours():
+def test_network_rotates_websocket_after_twelve_hours():
     async def scenario():
         api = FakeUserStreamApi(["listen-key-1"])
         second_connection_entered = asyncio.Event()
@@ -575,7 +575,7 @@ def test_network_rotates_listen_key_before_twenty_four_hours():
 
         async def sleep(delay):
             nonlocal rotation_fired
-            if delay == 23 * 60 * 60 + 50 * 60 and not rotation_fired:
+            if delay == 12 * 60 * 60 and not rotation_fired:
                 rotation_fired = True
                 return
             await blocked.wait()
