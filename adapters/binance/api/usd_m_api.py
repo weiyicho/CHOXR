@@ -31,3 +31,40 @@ class UsdMApi:
             {"symbol": symbol, "limit": limit},
             side_effect=False,
         )
+
+    def get_premium_index(
+        self,
+        symbol: str | None = None,
+    ) -> dict[str, Any] | list[dict[str, Any]]:
+        """Return current mark price, index price and predicted funding data."""
+
+        params = {"symbol": symbol} if symbol else None
+        return self._client.request(
+            "GET",
+            "/fapi/v1/premiumIndex",
+            params,
+            side_effect=False,
+        )
+
+    def get_funding_rate_info(self) -> list[dict[str, Any]]:
+        """Return symbols whose funding interval or caps differ from defaults."""
+
+        return self._client.request(
+            "GET",
+            "/fapi/v1/fundingInfo",
+            side_effect=False,
+        )
+
+    def get_24h_tickers(
+        self,
+        symbol: str | None = None,
+    ) -> dict[str, Any] | list[dict[str, Any]]:
+        """Return USD-M 24-hour rolling ticker statistics."""
+
+        params = {"symbol": symbol} if symbol else None
+        return self._client.request(
+            "GET",
+            "/fapi/v1/ticker/24hr",
+            params,
+            side_effect=False,
+        )

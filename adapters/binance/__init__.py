@@ -5,7 +5,9 @@ from .config import BinanceAccountMode, BinanceConfig
 from .gateways import (
     BinanceMarketDataGateway,
     ClassicPortfolioMarginAccountGateway,
-    ClassicPortfolioMarginTradingGateway,
+    ClassicPortfolioMarginMarginTradingGateway,
+    ClassicPortfolioMarginTradingRouter,
+    ClassicPortfolioMarginUsdMTradingGateway,
     PortfolioMarginOrderEventStream,
 )
 
@@ -15,7 +17,9 @@ __all__ = [
     "BinanceConfig",
     "BinanceMarketDataGateway",
     "ClassicPortfolioMarginAccountGateway",
-    "ClassicPortfolioMarginTradingGateway",
+    "ClassicPortfolioMarginMarginTradingGateway",
+    "ClassicPortfolioMarginTradingRouter",
+    "ClassicPortfolioMarginUsdMTradingGateway",
     "PortfolioMarginOrderEventStream",
     "verify_account_mode",
 ]

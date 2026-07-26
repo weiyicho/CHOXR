@@ -16,12 +16,15 @@ from adapters.binance.config import BinanceAccountMode, BinanceConfig
 from adapters.binance.gateways import (
     BinanceMarketDataGateway,
     ClassicPortfolioMarginAccountGateway,
-    ClassicPortfolioMarginTradingGateway,
+    ClassicPortfolioMarginMarginTradingGateway,
+    ClassicPortfolioMarginTradingRouter,
+    ClassicPortfolioMarginUsdMTradingGateway,
     PortfolioMarginOrderEventStream,
 )
 from adapters.binance.transport.clock import ServerClock
 from adapters.binance.transport.rate_limit import RateLimitState
 from adapters.binance.transport.rest_client import BinanceRestClient
+from adapters.discord_notifier import DiscordNotifier
 from adapters.persistence import (
     SqliteAtomicOrderPersistence,
     SqliteOrderEventRepository,
@@ -45,6 +48,7 @@ class ApplicationContainer:
     order_event_repository: SqliteOrderEventRepository
     atomic_order_persistence: SqliteAtomicOrderPersistence
     execution_service: OrderExecutionService
+    discord_notifier: DiscordNotifier
 
 
 def build_binance_container(
@@ -99,7 +103,12 @@ def build_binance_container(
         client.set_clock_sync(sync_clock)
 
     market_data = BinanceMarketDataGateway(spot_api, usd_m_api)
-    raw_trading = ClassicPortfolioMarginTradingGateway(portfolio_api)
+    margin_trading = ClassicPortfolioMarginMarginTradingGateway(portfolio_api)
+    usd_m_trading = ClassicPortfolioMarginUsdMTradingGateway(portfolio_api)
+    raw_trading = ClassicPortfolioMarginTradingRouter(
+        margin_gateway=margin_trading,
+        usd_m_gateway=usd_m_trading,
+    )
     trading = LiveTradingGuard(raw_trading, settings)
     account_profile_api = PortfolioAccountProfileApi(spot_client)
     raw_account = ClassicPortfolioMarginAccountGateway(
@@ -123,6 +132,10 @@ def build_binance_container(
         event_repository=event_repository,
         atomic_persistence=atomic_persistence,
     )
+    discord_notifier = DiscordNotifier(
+        settings.discord_webhook_url,
+        enabled=settings.discord_notifications_enabled,
+    )
     return ApplicationContainer(
         settings=settings,
         trading_gateway=trading,
@@ -133,4 +146,5 @@ def build_binance_container(
         order_event_repository=event_repository,
         atomic_order_persistence=atomic_persistence,
         execution_service=execution_service,
+        discord_notifier=discord_notifier,
     )

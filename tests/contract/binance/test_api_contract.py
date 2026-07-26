@@ -24,6 +24,39 @@ def test_market_data_uses_distinct_spot_and_um_depth_routes():
     assert um_client.calls[0]["path"] == "/fapi/v1/depth"
 
 
+def test_funding_monitor_market_data_uses_public_read_only_um_routes():
+    client = RecordingRestClient([[], [], []])
+    api = UsdMApi(client)
+
+    api.get_premium_index()
+    api.get_funding_rate_info()
+    api.get_24h_tickers()
+
+    assert [
+        (call["method"], call["path"], call["params"], call["side_effect"])
+        for call in client.calls
+    ] == [
+        ("GET", "/fapi/v1/premiumIndex", {}, False),
+        ("GET", "/fapi/v1/fundingInfo", {}, False),
+        ("GET", "/fapi/v1/ticker/24hr", {}, False),
+    ]
+    assert all("signed" not in call for call in client.calls)
+    assert all("api_key" not in call for call in client.calls)
+
+
+def test_funding_monitor_market_data_accepts_an_optional_symbol():
+    client = RecordingRestClient([{}, {}])
+    api = UsdMApi(client)
+
+    api.get_premium_index("ETHUSDT")
+    api.get_24h_tickers("ETHUSDT")
+
+    assert [call["params"] for call in client.calls] == [
+        {"symbol": "ETHUSDT"},
+        {"symbol": "ETHUSDT"},
+    ]
+
+
 def test_spot_depth_accepts_the_documented_integer_range():
     client = RecordingRestClient(
         [

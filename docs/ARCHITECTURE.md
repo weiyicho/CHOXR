@@ -18,8 +18,8 @@ CHOXR/
 │   ├── binance/
 │   └── persistence/
 ├── strategies/
-│   └── funding_rate/       Spot/perpetual selection and leg coordination
-├── app/                    configuration and dependency wiring
+│   └── funding_rate/       opportunity scanning, capital and leg coordination
+├── app/                    configuration, monitor process and dependency wiring
 ├── tests/                  unit, contract, integration and guarded live tests
 ├── docs/
 └── legacy/                 reference-only V1; production code must not import it
@@ -30,6 +30,9 @@ CHOXR/
 - `engine` never imports `adapters`, `strategies`, or `app`.
 - `engine` contains no Binance endpoint, Binance payload, or funding-rate rule.
 - `adapters` implement interfaces declared in `engine.ports`.
+- The Binance adapter keeps Portfolio Margin asset-leg and USD-M order payloads
+  in separate product gateways. An adapter-local router exposes one
+  `TradingGateway` to the exchange-neutral execution service.
 - `strategies` express trading intent through engine models and services; they
   never sign or send exchange requests directly.
 - `app` is the composition root and may import every package to wire the process.
@@ -49,8 +52,22 @@ generic order models.
 | `engine.risk` | Pure fail-closed pre-trade account and exposure decisions | Funding-rate thresholds, exchange I/O |
 | `engine.execution` | Submit, event application, cancellation, reconciliation, recovery | Which leg should trade first |
 | `adapters.binance` | Signing, endpoints, payload parsing, Binance error semantics | Trading decisions |
-| `strategies.funding_rate` | Capital split, maker-perpetual/taker-Spot coordination, strategy unwind | Generic order lifecycle |
-| `app` | Settings, dependency construction, process lifecycle | Domain calculations |
+| `strategies.funding_rate` | Read-only opportunity filtering, capital split, maker-perpetual/taker-Spot coordination, strategy unwind | Generic order lifecycle |
+| `app` | Settings, public funding monitor, dependency construction, process lifecycle | Domain calculations |
+
+## Read-only funding monitor
+
+`app.funding_rate_monitor` is intentionally separate from the private account
+and execution runtime. It builds only public Binance Spot/USD-M market-data
+clients and the optional outbound Discord notifier. The scan uses public GET
+responses to select liquid positive-funding USDT perpetuals, then asks the
+existing market-data gateway for executable Spot ask and perpetual bid prices
+for the ranked candidates.
+
+The monitor never constructs `PortfolioMarginApi`, an order-event stream, or an
+`OrderExecutionService`. Its scanner logic is a pure function in
+`strategies.funding_rate.scanner`; process timing, error backoff, Discord
+deduplication and heartbeat behavior remain in the application layer.
 
 ## Runtime safety defaults
 

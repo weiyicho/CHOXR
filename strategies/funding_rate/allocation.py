@@ -2,9 +2,50 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from decimal import Decimal
 
-from .models import FundingAllocation, _decimal
+
+def _decimal(value: Decimal | int | float | str) -> Decimal:
+    return value if isinstance(value, Decimal) else Decimal(str(value))
+
+
+@dataclass(frozen=True)
+class FundingAllocation:
+    """Capital and matched base quantity approved for one funding position."""
+
+    available_capital: Decimal
+    deployed_capital: Decimal
+    spot_notional: Decimal
+    futures_margin: Decimal
+    futures_notional: Decimal
+    reference_price: Decimal
+    base_quantity: Decimal
+    futures_leverage: Decimal
+
+    def __post_init__(self) -> None:
+        for field_name in (
+            "available_capital",
+            "deployed_capital",
+            "spot_notional",
+            "futures_margin",
+            "futures_notional",
+            "reference_price",
+            "base_quantity",
+            "futures_leverage",
+        ):
+            object.__setattr__(self, field_name, _decimal(getattr(self, field_name)))
+
+        if self.available_capital < 0 or self.deployed_capital < 0:
+            raise ValueError("capital cannot be negative")
+        if self.deployed_capital > self.available_capital:
+            raise ValueError("deployed capital exceeds available capital")
+        if self.reference_price <= 0:
+            raise ValueError("reference price must be positive")
+        if self.futures_leverage <= 0:
+            raise ValueError("futures leverage must be positive")
+        if self.base_quantity < 0:
+            raise ValueError("base quantity cannot be negative")
 
 
 class FundingCapitalAllocator:

@@ -6,7 +6,9 @@ from adapters.binance import (
     BinanceConfig,
     BinanceMarketDataGateway,
     ClassicPortfolioMarginAccountGateway,
-    ClassicPortfolioMarginTradingGateway,
+    ClassicPortfolioMarginMarginTradingGateway,
+    ClassicPortfolioMarginTradingRouter,
+    ClassicPortfolioMarginUsdMTradingGateway,
     PortfolioMarginOrderEventStream,
     verify_account_mode,
 )
@@ -36,5 +38,7 @@ def test_classic_config_guard_and_public_gateway_exports():
 
     assert BinanceMarketDataGateway
     assert ClassicPortfolioMarginAccountGateway
-    assert ClassicPortfolioMarginTradingGateway
+    assert ClassicPortfolioMarginMarginTradingGateway
+    assert ClassicPortfolioMarginTradingRouter
+    assert ClassicPortfolioMarginUsdMTradingGateway
     assert PortfolioMarginOrderEventStream

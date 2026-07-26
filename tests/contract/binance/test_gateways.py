@@ -16,7 +16,9 @@ from adapters.binance.gateways.order_event_stream import (
     StreamLifecycleSignal,
 )
 from adapters.binance.gateways.trading_gateway import (
-    ClassicPortfolioMarginTradingGateway,
+    ClassicPortfolioMarginMarginTradingGateway,
+    ClassicPortfolioMarginTradingRouter,
+    ClassicPortfolioMarginUsdMTradingGateway,
 )
 from adapters.binance.transport.errors import (
     BinanceAuthenticationError,
@@ -124,6 +126,132 @@ class FakePortfolioApi:
             "reduceOnly": kwargs["reduce_only"],
             "positionSide": "BOTH",
         }
+
+
+class FakeSplitTradingApi:
+    """Records which Portfolio Margin order family each gateway touches."""
+
+    def __init__(self):
+        self.calls = []
+
+    @staticmethod
+    def _order_payload(
+        *,
+        symbol="ETHUSDT",
+        client_order_id="order-1",
+        status="NEW",
+        side="BUY",
+        order_type="LIMIT",
+        quantity="0.1",
+        price="3200",
+        reduce_only=False,
+    ):
+        return {
+            "symbol": symbol,
+            "orderId": 77,
+            "clientOrderId": client_order_id,
+            "status": status,
+            "side": side,
+            "type": order_type,
+            "origQty": str(quantity),
+            "executedQty": "0",
+            "cumQuote": "0",
+            "price": str(price or "0"),
+            "avgPrice": "0",
+            "reduceOnly": reduce_only,
+            "positionSide": "BOTH",
+        }
+
+    def place_margin_order(self, **kwargs):
+        self.calls.append(("place_margin_order", kwargs))
+        return self._order_payload(
+            symbol=kwargs["symbol"],
+            client_order_id=kwargs["client_order_id"],
+            side=kwargs["side"],
+            order_type=kwargs["order_type"],
+            quantity=kwargs["quantity"],
+            price=kwargs["price"],
+        )
+
+    def query_margin_order(self, symbol, *, client_order_id):
+        self.calls.append(
+            (
+                "query_margin_order",
+                {"symbol": symbol, "client_order_id": client_order_id},
+            )
+        )
+        return self._order_payload(
+            symbol=symbol,
+            client_order_id=client_order_id,
+        )
+
+    def cancel_margin_order(self, symbol, *, client_order_id):
+        self.calls.append(
+            (
+                "cancel_margin_order",
+                {"symbol": symbol, "client_order_id": client_order_id},
+            )
+        )
+        return self._order_payload(
+            symbol=symbol,
+            client_order_id=client_order_id,
+            status="CANCELED",
+        )
+
+    def list_margin_open_orders(self, symbol=None):
+        self.calls.append(("list_margin_open_orders", {"symbol": symbol}))
+        return [
+            self._order_payload(
+                symbol=symbol or "ETHUSDT",
+                client_order_id="spot-open-1",
+            )
+        ]
+
+    def place_um_order(self, **kwargs):
+        self.calls.append(("place_um_order", kwargs))
+        return self._order_payload(
+            symbol=kwargs["symbol"],
+            client_order_id=kwargs["client_order_id"],
+            side=kwargs["side"],
+            order_type=kwargs["order_type"],
+            quantity=kwargs["quantity"],
+            price=kwargs["price"],
+            reduce_only=kwargs["reduce_only"],
+        )
+
+    def query_um_order(self, symbol, *, client_order_id):
+        self.calls.append(
+            (
+                "query_um_order",
+                {"symbol": symbol, "client_order_id": client_order_id},
+            )
+        )
+        return self._order_payload(
+            symbol=symbol,
+            client_order_id=client_order_id,
+        )
+
+    def cancel_um_order(self, symbol, *, client_order_id):
+        self.calls.append(
+            (
+                "cancel_um_order",
+                {"symbol": symbol, "client_order_id": client_order_id},
+            )
+        )
+        return self._order_payload(
+            symbol=symbol,
+            client_order_id=client_order_id,
+            status="CANCELED",
+        )
+
+    def list_um_open_orders(self, symbol=None):
+        self.calls.append(("list_um_open_orders", {"symbol": symbol}))
+        return [
+            self._order_payload(
+                symbol=symbol or "ETHUSDT",
+                client_order_id="um-open-1",
+            )
+        ]
 
 
 class FakeUserStreamApi:
@@ -279,9 +407,135 @@ def test_account_gateway_preflight_verifies_pm_2_then_reads_papi_account():
     assert papi.calls == [{"get_account": True}]
 
 
+def _margin_market_intent(client_order_id="fund-spot-1"):
+    return OrderIntent(
+        execution_id="execution-1",
+        client_order_id=client_order_id,
+        instrument=InstrumentId("binance", "MARGIN", "ETHUSDT"),
+        side=Side.BUY,
+        quantity=Decimal("0.1"),
+        order_type=OrderType.MARKET,
+    )
+
+
+def _um_maker_intent(client_order_id="fund-perp-1"):
+    return OrderIntent(
+        execution_id="execution-1",
+        client_order_id=client_order_id,
+        instrument=InstrumentId("binance", "USD_M_FUTURES", "ETHUSDT"),
+        side=Side.SELL,
+        quantity=Decimal("0.1"),
+        order_type=OrderType.LIMIT,
+        price=Decimal("3200"),
+        time_in_force=TimeInForce.GTC,
+        post_only=True,
+    )
+
+
+def _trading_router(api):
+    return ClassicPortfolioMarginTradingRouter(
+        margin_gateway=ClassicPortfolioMarginMarginTradingGateway(api),
+        usd_m_gateway=ClassicPortfolioMarginUsdMTradingGateway(api),
+    )
+
+
+def test_margin_trading_gateway_only_uses_margin_order_endpoints():
+    api = FakeSplitTradingApi()
+    gateway = ClassicPortfolioMarginMarginTradingGateway(api)
+    intent = _margin_market_intent()
+
+    submitted = gateway.submit_order(intent)
+    queried = gateway.get_order(intent.instrument, intent.client_order_id)
+    canceled = gateway.cancel_order(intent.instrument, intent.client_order_id)
+    open_orders = gateway.list_open_orders(intent.instrument)
+
+    assert submitted.intent is intent
+    assert queried is not None
+    assert canceled.state is OrderState.CANCELED
+    assert open_orders[0].intent.instrument.market == "MARGIN"
+    assert [name for name, _ in api.calls] == [
+        "place_margin_order",
+        "query_margin_order",
+        "cancel_margin_order",
+        "list_margin_open_orders",
+    ]
+    assert api.calls[0][1]["side_effect_type"] == "NO_SIDE_EFFECT"
+
+
+def test_usd_m_trading_gateway_only_uses_um_order_endpoints():
+    api = FakeSplitTradingApi()
+    gateway = ClassicPortfolioMarginUsdMTradingGateway(api)
+    intent = _um_maker_intent()
+
+    submitted = gateway.submit_order(intent)
+    queried = gateway.get_order(intent.instrument, intent.client_order_id)
+    canceled = gateway.cancel_order(intent.instrument, intent.client_order_id)
+    open_orders = gateway.list_open_orders(intent.instrument)
+
+    assert submitted.intent is intent
+    assert queried is not None
+    assert canceled.state is OrderState.CANCELED
+    assert open_orders[0].intent.instrument.market == "USD_M_FUTURES"
+    assert [name for name, _ in api.calls] == [
+        "place_um_order",
+        "query_um_order",
+        "cancel_um_order",
+        "list_um_open_orders",
+    ]
+    assert api.calls[0][1]["time_in_force"] == "GTX"
+
+
+def test_specialized_trading_gateways_reject_the_wrong_market_family():
+    api = FakeSplitTradingApi()
+    margin_gateway = ClassicPortfolioMarginMarginTradingGateway(api)
+    usd_m_gateway = ClassicPortfolioMarginUsdMTradingGateway(api)
+
+    with pytest.raises(ValueError):
+        margin_gateway.submit_order(_um_maker_intent())
+    with pytest.raises(ValueError):
+        usd_m_gateway.submit_order(_margin_market_intent())
+
+    assert api.calls == []
+
+
+def test_trading_router_routes_each_market_to_its_specialized_gateway():
+    api = FakeSplitTradingApi()
+    margin_gateway = ClassicPortfolioMarginMarginTradingGateway(api)
+    usd_m_gateway = ClassicPortfolioMarginUsdMTradingGateway(api)
+    router = ClassicPortfolioMarginTradingRouter(
+        margin_gateway=margin_gateway,
+        usd_m_gateway=usd_m_gateway,
+    )
+    margin_intent = _margin_market_intent()
+    um_intent = _um_maker_intent()
+
+    router.submit_order(margin_intent)
+    router.submit_order(um_intent)
+    router.get_order(margin_intent.instrument, margin_intent.client_order_id)
+    router.get_order(um_intent.instrument, um_intent.client_order_id)
+    router.cancel_order(margin_intent.instrument, margin_intent.client_order_id)
+    router.cancel_order(um_intent.instrument, um_intent.client_order_id)
+    open_orders = router.list_open_orders()
+
+    assert [name for name, _ in api.calls] == [
+        "place_margin_order",
+        "place_um_order",
+        "query_margin_order",
+        "query_um_order",
+        "cancel_margin_order",
+        "cancel_um_order",
+        "list_margin_open_orders",
+        "list_um_open_orders",
+    ]
+    assert [record.intent.instrument.market for record in open_orders] == [
+        "MARGIN",
+        "USD_M_FUTURES",
+    ]
+
+
 def test_post_only_um_intent_becomes_gtx_and_returns_engine_order_record():
     api = FakePortfolioApi()
-    gateway = ClassicPortfolioMarginTradingGateway(api)
+    gateway = _trading_router(api)
     intent = OrderIntent(
         execution_id="execution-1",
         client_order_id="fund-perp-1",
@@ -303,7 +557,7 @@ def test_post_only_um_intent_becomes_gtx_and_returns_engine_order_record():
 
 
 def test_unknown_transport_outcome_becomes_engine_unknown_submission_state():
-    gateway = ClassicPortfolioMarginTradingGateway(FakePortfolioApi(unknown=True))
+    gateway = _trading_router(FakePortfolioApi(unknown=True))
     intent = OrderIntent(
         execution_id="execution-1",
         client_order_id="fund-perp-1",
@@ -318,9 +572,7 @@ def test_unknown_transport_outcome_becomes_engine_unknown_submission_state():
 
 
 def test_authoritative_binance_error_becomes_engine_submission_rejection():
-    gateway = ClassicPortfolioMarginTradingGateway(
-        FakePortfolioApi(rejected=True)
-    )
+    gateway = _trading_router(FakePortfolioApi(rejected=True))
     intent = OrderIntent(
         execution_id="execution-1",
         client_order_id="fund-perp-1",

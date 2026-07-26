@@ -21,6 +21,7 @@ def test_container_builds_without_network_requests(tmp_path) -> None:
     assert container.order_event_stream.listen_key is None
     assert container.order_repository.list_open() == ()
     assert container.atomic_order_persistence.path.endswith("engine.sqlite3")
+    assert container.discord_notifier.enabled is False
 
     with pytest.raises(RuntimeError, match="live trading is disabled"):
         container.trading_gateway.submit_order(

@@ -1,13 +1,14 @@
 """Positive-funding arbitrage strategy components."""
 
-from .allocation import FundingCapitalAllocator
+from .allocation import FundingAllocation, FundingCapitalAllocator
 from .entry_coordinator import FundingEntryCoordinator, SpotHedgePlan
-from .models import FundingAllocation, FundingOpportunity
+from .scanner import FundingCandidate, scan_funding_candidates
 
 __all__ = [
     "FundingAllocation",
     "FundingCapitalAllocator",
+    "FundingCandidate",
     "FundingEntryCoordinator",
-    "FundingOpportunity",
     "SpotHedgePlan",
+    "scan_funding_candidates",
 ]

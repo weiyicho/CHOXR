@@ -25,12 +25,13 @@ engine/
 
 adapters/
 ├── binance/      Classic Portfolio Margin REST/WebSocket adapter
-└── persistence/  in-memory and SQLite order/event repositories
+├── persistence/  in-memory and SQLite order/event repositories
+└── discord_notifier.py  outbound monitoring notifications
 
 strategies/
-└── funding_rate/ capital split and maker-perpetual/taker-Spot coordination
+└── funding_rate/ opportunity scanning, capital split and leg coordination
 
-app/              environment settings, safety guard and dependency wiring
+app/              environment settings, monitor entry point and dependency wiring
 legacy/           original prototype; active code never imports it
 ```
 
@@ -60,9 +61,15 @@ Explicitly authorized live smoke-test results are recorded in
 - Decimal tick-size, step-size, min-quantity and min-notional enforcement.
 - Generic exact-quantity market-order planning for taker hedges.
 - Funding allocation that matches Spot and perpetual notional.
+- Read-only Binance funding-rate scanner with positive-rate, annualized-return
+  and 24-hour-liquidity filters plus executable Spot/perpetual entry basis.
+- Local monitor entry point with Top-10 console output, optional Discord
+  summaries, changed-candidate deduplication and periodic heartbeat.
 - Incremental Spot hedge planning for every new perpetual partial fill.
 - Binance Spot/USD-M public market data and Classic Portfolio Margin order,
-  account, position, funding-income and user-stream boundaries.
+  account, position, funding-income and user-stream boundaries. Margin-asset
+  and USD-M orders use separate product gateways behind one engine-facing
+  trading router.
 - Live submit/cancel is disabled unless `CHOXR_LIVE_TRADING=true` is explicitly
   set in the environment.
 - Binance API fund collection is not automatic because Auto Aggregate Balances
@@ -96,10 +103,34 @@ BINANCE_API_KEY
 BINANCE_API_SECRET
 BINANCE_ACCOUNT_MODE=CLASSIC_PORTFOLIO_MARGIN
 CHOXR_LIVE_TRADING=false
+DISCORD_WEBHOOK_URL=
+CHOXR_DISCORD_NOTIFICATIONS=false
+CHOXR_FUNDING_SCAN_INTERVAL_SECONDS=300
+CHOXR_FUNDING_SUMMARY_INTERVAL_SECONDS=1800
+CHOXR_FUNDING_MIN_ANNUALIZED_RATE=0.10
+CHOXR_FUNDING_MIN_QUOTE_VOLUME_24H=3000000
+CHOXR_FUNDING_TOP_N=10
 ```
 
 Constructing the application does not start a stream or send a request. Runtime
 preflight and read-only smoke tests must pass before live trading is enabled.
+
+Run one public, read-only funding scan without sending Discord:
+
+```bash
+python3 -m app.funding_rate_monitor --once
+```
+
+Run the continuous monitor:
+
+```bash
+python3 -m app.funding_rate_monitor
+```
+
+`--once --notify` sends the one-shot report only when Discord notifications are
+explicitly enabled. The funding monitor does not construct private account,
+WebSocket or order-execution components and does not require Binance API
+credentials.
 
 ## Still required before real capital
 
