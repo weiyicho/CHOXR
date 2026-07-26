@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+import pytest
+
 from adapters.binance.parsers.accounts import parse_account, parse_funding_income
 from adapters.binance.parsers.order_books import parse_order_book
 from adapters.binance.parsers.order_events import parse_order_event
@@ -60,6 +62,28 @@ def test_exchange_info_and_order_book_preserve_decimal_strings():
     assert rules.market_max_quantity == Decimal("250")
     assert book.bids[0].quantity == Decimal("1.250")
     assert book.asks[0].price == Decimal("3210.02")
+
+
+def test_zero_market_lot_rules_fall_back_to_general_lot_size():
+    payload = exchange_info_payload()
+    market_lot_size = next(
+        item
+        for item in payload["symbols"][0]["filters"]
+        if item["filterType"] == "MARKET_LOT_SIZE"
+    )
+    market_lot_size.update(
+        {
+            "minQty": "0.00000000",
+            "maxQty": "2829.36596416",
+            "stepSize": "0.00000000",
+        }
+    )
+
+    rules = parse_exchange_info(payload, "ETHUSDT")
+
+    assert rules.market_quantity_step is None
+    assert rules.market_min_quantity is None
+    assert rules.market_max_quantity == Decimal("2829.36596416")
 
 
 def test_margin_and_um_order_responses_map_to_one_snapshot_shape():
@@ -153,6 +177,8 @@ def test_user_stream_parses_margin_and_um_partial_fills():
             "L": "3200",
             "Z": "80",
             "t": 7,
+            "n": "0.000025",
+            "N": "ETH",
             "r": "NONE",
         }
     )
@@ -175,6 +201,8 @@ def test_user_stream_parses_margin_and_um_partial_fills():
                 "L": "3201",
                 "ap": "3201",
                 "t": 8,
+                "n": "0.0125",
+                "N": "USDT",
                 "R": False,
                 "ps": "BOTH",
             },
@@ -183,8 +211,72 @@ def test_user_stream_parses_margin_and_um_partial_fills():
 
     assert margin.market == "MARGIN"
     assert margin.average_price == Decimal("3200")
+    assert margin.last_executed_quantity == Decimal("0.025")
+    assert margin.last_executed_price == Decimal("3200")
+    assert margin.trade_id == 7
+    assert margin.commission == Decimal("0.000025")
+    assert margin.commission_asset == "ETH"
     assert um.market == "USD_M_FUTURES"
     assert um.cumulative_quantity == Decimal("0.025")
+    assert um.last_executed_quantity == Decimal("0.025")
+    assert um.last_executed_price == Decimal("3201")
+    assert um.trade_id == 8
+    assert um.commission == Decimal("0.0125")
+    assert um.commission_asset == "USDT"
+
+
+def test_user_stream_order_event_allows_missing_trade_metadata():
+    event = parse_order_event(
+        {
+            "e": "executionReport",
+            "E": 1_700_000_000_000,
+            "s": "ETHUSDT",
+            "c": "spot-1",
+            "i": 10,
+            "S": "BUY",
+            "o": "LIMIT",
+            "x": "NEW",
+            "X": "NEW",
+            "q": "0.1",
+            "z": "0",
+            "Z": "0",
+            "r": "NONE",
+        }
+    )
+
+    assert event.last_executed_quantity is None
+    assert event.last_executed_price is None
+    assert event.trade_id is None
+    assert event.commission is None
+    assert event.commission_asset is None
+
+
+@pytest.mark.parametrize("field_name", ["l", "L", "n"])
+def test_user_stream_order_event_rejects_negative_trade_decimals(field_name):
+    payload = {
+        "e": "executionReport",
+        "E": 1_700_000_000_000,
+        "s": "ETHUSDT",
+        "c": "spot-1",
+        "i": 10,
+        "S": "BUY",
+        "o": "MARKET",
+        "x": "TRADE",
+        "X": "PARTIALLY_FILLED",
+        "q": "0.1",
+        "l": "0.025",
+        "z": "0.025",
+        "L": "3200",
+        "Z": "80",
+        "t": 7,
+        "n": "0.000025",
+        "N": "ETH",
+        "r": "NONE",
+    }
+    payload[field_name] = "-0.01"
+
+    with pytest.raises(ValueError, match="cannot be negative"):
+        parse_order_event(payload)
 
 
 def test_funding_parser_excludes_non_funding_income():

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
@@ -94,7 +95,11 @@ class DiscordNotifier:
             with Path(picture_path).open("rb") as picture:
                 response = self._session.post(
                     self._webhook_url,
-                    data={"username": username or self._username},
+                    data={
+                        "payload_json": json.dumps(
+                            {"username": username or self._username}
+                        )
+                    },
                     files={"file": picture},
                     timeout=self._timeout_seconds,
                 )
@@ -102,7 +107,13 @@ class DiscordNotifier:
             LOGGER.warning("Discord picture notification failed: %s", exc)
             return False
 
-        return 200 <= response.status_code < 300
+        accepted = 200 <= response.status_code < 300
+        if not accepted:
+            LOGGER.warning(
+                "Discord picture notification rejected with HTTP %s",
+                response.status_code,
+            )
+        return accepted
 
     def _post_json(self, payload: Mapping[str, object]) -> bool:
         if not self._enabled:
@@ -118,4 +129,10 @@ class DiscordNotifier:
             LOGGER.warning("Discord notification failed: %s", exc)
             return False
 
-        return 200 <= response.status_code < 300
+        accepted = 200 <= response.status_code < 300
+        if not accepted:
+            LOGGER.warning(
+                "Discord notification rejected with HTTP %s",
+                response.status_code,
+            )
+        return accepted

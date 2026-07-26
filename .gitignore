@@ -15,6 +15,7 @@ legacy/config_v1/api.json
 *.sqlite
 *.sqlite3
 runtime/
+strategies/funding_rate/runtime/
 
 # Legacy research data and generated artifacts
 legacy/strategy_v1/strategy1/data/

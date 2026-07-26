@@ -159,6 +159,24 @@ class OrderExecutionService:
             # an older websocket TRADE leaves the local queue.  Journal the
             # delivery for deduplication/audit, but never move state backwards.
             return self._persist(local, event)
+        if (
+            local.is_terminal
+            and event.kind is OrderEventKind.ACKNOWLEDGED
+            and (
+                event.exchange_order_id is None
+                or local.exchange_order_id is None
+                or event.exchange_order_id == local.exchange_order_id
+            )
+            and (
+                event.cumulative_quantity is None
+                or event.cumulative_quantity <= local.cumulative_quantity
+            )
+        ):
+            # A MARKET submission can return an authoritative FILLED response
+            # before the websocket's earlier NEW acknowledgement leaves the
+            # account-stream queue. Journal that stale delivery, but preserve
+            # the terminal state and cumulative fill observed from REST.
+            return self._persist(local, event)
         return self._apply_and_persist(local, event)
 
     def reconcile(self, client_order_id: str) -> OrderRecord:

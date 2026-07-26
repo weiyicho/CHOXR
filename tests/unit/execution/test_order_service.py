@@ -80,6 +80,16 @@ class StubGateway:
         return tuple(order for order in self.orders.values() if not order.is_terminal)
 
 
+class ImmediateFillGateway(StubGateway):
+    def submit_order(self, intent: OrderIntent) -> OrderRecord:
+        order = super().submit_order(intent)
+        order.state = OrderState.FILLED
+        order.exchange_order_id = "exchange-order-1"
+        order.cumulative_quantity = intent.quantity
+        order.average_price = Decimal("123.45")
+        return order
+
+
 def test_submit_persists_authoritative_new_order() -> None:
     gateway = StubGateway()
     repository = InMemoryOrderRepository()
@@ -362,6 +372,38 @@ def test_old_partial_trade_after_filled_reconciliation_is_journaled_noop() -> No
     assert result.state is OrderState.FILLED
     assert result.cumulative_quantity == Decimal("1")
     assert events.contains("older-partial-fill")
+    persisted = repository.get("exec-1-order-1")
+    assert persisted is not None
+    assert persisted.state is OrderState.FILLED
+    assert persisted.cumulative_quantity == Decimal("1")
+
+
+def test_late_websocket_ack_after_immediate_rest_fill_is_journaled_noop() -> None:
+    gateway = ImmediateFillGateway()
+    repository = InMemoryOrderRepository()
+    events = RecordingEventRepository()
+    service = OrderExecutionService(
+        gateway,
+        repository,
+        event_repository=events,
+    )
+    filled = service.submit(make_intent())
+    assert filled.state is OrderState.FILLED
+
+    result = service.handle_event(
+        OrderEvent(
+            kind=OrderEventKind.ACKNOWLEDGED,
+            client_order_id="exec-1-order-1",
+            event_id="late-new-ack",
+            cumulative_quantity=Decimal("0"),
+            exchange_order_id="exchange-order-1",
+        )
+    )
+
+    assert result.state is OrderState.FILLED
+    assert result.cumulative_quantity == Decimal("1")
+    assert result.average_price == Decimal("123.45")
+    assert events.contains("late-new-ack")
     persisted = repository.get("exec-1-order-1")
     assert persisted is not None
     assert persisted.state is OrderState.FILLED

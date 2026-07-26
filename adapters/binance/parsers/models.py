@@ -147,11 +147,37 @@ class OrderEventSnapshot:
     execution_type: str
     status: str
     original_quantity: Decimal
-    last_executed_quantity: Decimal
     cumulative_quantity: Decimal
-    last_executed_price: Decimal
     average_price: Decimal | None
-    trade_id: int | None
     reject_reason: str | None
+    last_executed_quantity: Decimal | None = None
+    last_executed_price: Decimal | None = None
+    trade_id: int | None = None
+    commission: Decimal | None = None
+    commission_asset: str | None = None
     reduce_only: bool = False
     position_side: str | None = None
+
+    def __post_init__(self) -> None:
+        for field_name in (
+            "last_executed_quantity",
+            "last_executed_price",
+            "commission",
+        ):
+            value = getattr(self, field_name)
+            if value is None:
+                continue
+            decimal_value = Decimal(str(value))
+            object.__setattr__(self, field_name, decimal_value)
+            if decimal_value < ZERO:
+                raise ValueError(f"{field_name} cannot be negative")
+
+        if self.trade_id is not None and self.trade_id < 0:
+            raise ValueError("trade_id cannot be negative")
+        if self.commission_asset is not None:
+            normalized_asset = self.commission_asset.strip()
+            object.__setattr__(
+                self,
+                "commission_asset",
+                normalized_asset or None,
+            )

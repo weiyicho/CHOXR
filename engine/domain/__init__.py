@@ -12,6 +12,7 @@ from .order import (
     TimeInForce,
 )
 from .order_event import OrderEvent, OrderEventKind
+from .order_fill import OrderFill
 from .order_state_machine import InvalidOrderTransition, OrderStateMachine
 from .position import PositionSnapshot, PositionTarget
 
@@ -24,6 +25,7 @@ __all__ = [
     "OrderBookSnapshot",
     "OrderEvent",
     "OrderEventKind",
+    "OrderFill",
     "OrderIntent",
     "OrderRecord",
     "OrderState",

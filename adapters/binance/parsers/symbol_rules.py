@@ -12,6 +12,17 @@ def _decimal(value: object | None) -> Decimal | None:
     return Decimal(str(value))
 
 
+def _positive_decimal(value: object | None) -> Decimal | None:
+    """Treat Binance's zero-valued optional filter rule as disabled."""
+
+    parsed = _decimal(value)
+    if parsed is None or parsed == 0:
+        return None
+    if parsed < 0:
+        raise ValueError("exchange filter value cannot be negative")
+    return parsed
+
+
 def parse_symbol_rules(payload: dict[str, Any]) -> SymbolRules:
     filters = {item["filterType"]: item for item in payload.get("filters", [])}
     price_filter = filters.get("PRICE_FILTER", {})
@@ -31,9 +42,19 @@ def parse_symbol_rules(payload: dict[str, Any]) -> SymbolRules:
         max_quantity=_decimal(lot_size.get("maxQty")),
         min_notional=_decimal(min_notional),
         max_notional=_decimal(max_notional),
-        market_quantity_step=_decimal(market_lot_size.get("stepSize")),
-        market_min_quantity=_decimal(market_lot_size.get("minQty")),
-        market_max_quantity=_decimal(market_lot_size.get("maxQty")),
+        # Binance currently publishes MARKET_LOT_SIZE fields with zero when an
+        # individual rule is disabled (for example, BNBUSDT can have a zero
+        # stepSize/minQty but a positive maxQty).  Preserve positive overrides
+        # and let the engine fall back to LOT_SIZE for disabled fields.
+        market_quantity_step=_positive_decimal(
+            market_lot_size.get("stepSize")
+        ),
+        market_min_quantity=_positive_decimal(
+            market_lot_size.get("minQty")
+        ),
+        market_max_quantity=_positive_decimal(
+            market_lot_size.get("maxQty")
+        ),
     )
 
 

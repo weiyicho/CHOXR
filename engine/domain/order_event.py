@@ -31,6 +31,11 @@ class OrderEvent:
     event_id: Optional[str] = None
     cumulative_quantity: Optional[Decimal] = None
     average_price: Optional[Decimal] = None
+    last_executed_quantity: Optional[Decimal] = None
+    last_executed_price: Optional[Decimal] = None
+    trade_id: Optional[str] = None
+    commission: Optional[Decimal] = None
+    commission_asset: Optional[str] = None
     exchange_order_id: Optional[str] = None
     reconciled_state: Optional[OrderState] = None
     reason: Optional[str] = None
@@ -55,3 +60,35 @@ class OrderEvent:
             object.__setattr__(self, "average_price", as_decimal(self.average_price))
             if self.average_price < 0:
                 raise ValueError("average_price cannot be negative")
+        if self.last_executed_quantity is not None:
+            object.__setattr__(
+                self,
+                "last_executed_quantity",
+                as_decimal(self.last_executed_quantity),
+            )
+            if self.last_executed_quantity < 0:
+                raise ValueError("last_executed_quantity cannot be negative")
+        if self.last_executed_price is not None:
+            object.__setattr__(
+                self,
+                "last_executed_price",
+                as_decimal(self.last_executed_price),
+            )
+            if self.last_executed_price < 0:
+                raise ValueError("last_executed_price cannot be negative")
+        if self.trade_id is not None:
+            object.__setattr__(self, "trade_id", str(self.trade_id).strip())
+            if not self.trade_id:
+                raise ValueError("trade_id cannot be blank")
+        if self.commission is not None:
+            object.__setattr__(self, "commission", as_decimal(self.commission))
+            if self.commission < 0:
+                raise ValueError("commission cannot be negative")
+        if self.commission_asset is not None:
+            object.__setattr__(
+                self,
+                "commission_asset",
+                self.commission_asset.strip(),
+            )
+            if not self.commission_asset:
+                raise ValueError("commission_asset cannot be blank")

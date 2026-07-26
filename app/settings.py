@@ -19,11 +19,12 @@ class Settings:
     live_trading_enabled: bool = False
     discord_webhook_url: str = ""
     discord_notifications_enabled: bool = False
-    funding_scan_interval_seconds: float = 300.0
-    funding_summary_interval_seconds: float = 1_800.0
+    funding_scan_interval_seconds: float = 3_600.0
     funding_min_annualized_rate: Decimal = Decimal("0.10")
     funding_min_quote_volume_24h: Decimal = Decimal("3000000")
     funding_top_n: int = 10
+    funding_capital: Decimal = Decimal("50")
+    funding_leverage: int = 5
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -36,16 +37,23 @@ class Settings:
             "funding_min_quote_volume_24h",
             Decimal(str(self.funding_min_quote_volume_24h)),
         )
+        object.__setattr__(
+            self,
+            "funding_capital",
+            Decimal(str(self.funding_capital)),
+        )
         if self.funding_scan_interval_seconds <= 0:
             raise ValueError("funding_scan_interval_seconds must be positive")
-        if self.funding_summary_interval_seconds <= 0:
-            raise ValueError("funding_summary_interval_seconds must be positive")
         if self.funding_min_annualized_rate < 0:
             raise ValueError("funding_min_annualized_rate cannot be negative")
         if self.funding_min_quote_volume_24h < 0:
             raise ValueError("funding_min_quote_volume_24h cannot be negative")
         if not 1 <= self.funding_top_n <= 10:
             raise ValueError("funding_top_n must be between 1 and 10")
+        if self.funding_capital <= 0:
+            raise ValueError("funding_capital must be positive")
+        if not 1 <= self.funding_leverage <= 125:
+            raise ValueError("funding_leverage must be between 1 and 125")
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -61,10 +69,7 @@ class Settings:
                 os.getenv("CHOXR_DISCORD_NOTIFICATIONS")
             ),
             funding_scan_interval_seconds=float(
-                os.getenv("CHOXR_FUNDING_SCAN_INTERVAL_SECONDS", "300")
-            ),
-            funding_summary_interval_seconds=float(
-                os.getenv("CHOXR_FUNDING_SUMMARY_INTERVAL_SECONDS", "1800")
+                os.getenv("CHOXR_FUNDING_SCAN_INTERVAL_SECONDS", "3600")
             ),
             funding_min_annualized_rate=Decimal(
                 os.getenv("CHOXR_FUNDING_MIN_ANNUALIZED_RATE", "0.10")
@@ -73,6 +78,12 @@ class Settings:
                 os.getenv("CHOXR_FUNDING_MIN_QUOTE_VOLUME_24H", "3000000")
             ),
             funding_top_n=int(os.getenv("CHOXR_FUNDING_TOP_N", "10")),
+            funding_capital=Decimal(
+                os.getenv("CHOXR_FUNDING_CAPITAL", "50")
+            ),
+            funding_leverage=int(
+                os.getenv("CHOXR_FUNDING_LEVERAGE", "5")
+            ),
         )
 
     def require_credentials(self) -> None:

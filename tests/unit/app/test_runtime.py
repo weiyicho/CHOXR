@@ -56,7 +56,7 @@ def test_runtime_runs_network_producer_and_engine_consumer_together():
     asyncio.run(scenario())
 
 
-def test_connected_and_reconnected_reconcile_before_runtime_is_ready():
+def test_connected_and_reconnected_reconcile_before_runtime_is_ready(capsys):
     @dataclass(frozen=True)
     class Signal:
         kind: StreamLifecycleKind
@@ -73,6 +73,7 @@ def test_connected_and_reconnected_reconcile_before_runtime_is_ready():
             yield Signal(StreamLifecycleKind.CONNECTED)
             await self.connected_observed.wait()
             yield Signal(StreamLifecycleKind.RECONNECTING)
+            yield Signal(StreamLifecycleKind.LISTEN_KEY_REBUILT)
             yield Signal(StreamLifecycleKind.RECONNECTED)
             await self.stop_requested.wait()
             yield Signal(StreamLifecycleKind.STOPPED)
@@ -134,6 +135,18 @@ def test_connected_and_reconnected_reconcile_before_runtime_is_ready():
         assert not runtime.is_synchronized
 
     asyncio.run(scenario())
+    output = capsys.readouterr().out
+    assert "[FUNDING][WEBSOCKET] CONNECTED sequence=0" in output
+    assert "[FUNDING][RECONCILIATION] BEGIN cause=connected" in output
+    assert (
+        "[FUNDING][RECONCILIATION] COMPLETE "
+        "reconciled_orders=0 unresolved_orders=0"
+    ) in output
+    assert "[FUNDING][RUNTIME] SYNCHRONIZED sequence=0" in output
+    assert "[FUNDING][WEBSOCKET] RECONNECTING sequence=0 attempt=0" in output
+    assert "[FUNDING][WEBSOCKET] LISTEN_KEY_REBUILT sequence=0" in output
+    assert "[FUNDING][WEBSOCKET] RECONNECTED sequence=0" in output
+    assert "[FUNDING][RUNTIME] STOPPED" in output
 
 
 def test_failed_connection_reconciliation_never_sets_ready():

@@ -1,3 +1,4 @@
+import sqlite3
 from decimal import Decimal
 
 from adapters.persistence import SqliteOrderEventRepository, SqliteOrderRepository
@@ -51,6 +52,11 @@ def test_sqlite_event_journal_preserves_order(tmp_path) -> None:
             event_id="event-2",
             cumulative_quantity=Decimal("0.25"),
             average_price=Decimal("2000.5"),
+            last_executed_quantity=Decimal("0.25"),
+            last_executed_price=Decimal("2000.5"),
+            trade_id="trade-2",
+            commission=Decimal("0.00025"),
+            commission_asset="ETH",
         ),
     )
 
@@ -60,3 +66,40 @@ def test_sqlite_event_journal_preserves_order(tmp_path) -> None:
     assert repository.list_for_order("sqlite-order-1") == events
     assert repository.contains("event-1")
     assert not repository.contains("missing-event")
+
+
+def test_sqlite_event_repository_migrates_legacy_event_table(tmp_path) -> None:
+    database = tmp_path / "legacy.sqlite3"
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            """
+            CREATE TABLE order_events (
+                sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_order_id TEXT NOT NULL,
+                event_id TEXT,
+                kind TEXT NOT NULL,
+                cumulative_quantity TEXT,
+                average_price TEXT,
+                exchange_order_id TEXT,
+                reconciled_state TEXT,
+                reason TEXT,
+                occurred_at TEXT NOT NULL
+            )
+            """
+        )
+
+    repository = SqliteOrderEventRepository(database)
+    event = OrderEvent(
+        kind=OrderEventKind.TRADE,
+        client_order_id="legacy-order",
+        event_id="legacy-event",
+        cumulative_quantity="0.01",
+        last_executed_quantity="0.01",
+        last_executed_price="100",
+        trade_id="7",
+        commission="0.00001",
+        commission_asset="ETH",
+    )
+    repository.append(event)
+
+    assert repository.list_for_order("legacy-order") == (event,)

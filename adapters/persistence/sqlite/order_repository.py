@@ -69,6 +69,11 @@ def _ensure_order_events_schema(connection: sqlite3.Connection) -> None:
             kind TEXT NOT NULL,
             cumulative_quantity TEXT,
             average_price TEXT,
+            last_executed_quantity TEXT,
+            last_executed_price TEXT,
+            trade_id TEXT,
+            commission TEXT,
+            commission_asset TEXT,
             exchange_order_id TEXT,
             reconciled_state TEXT,
             reason TEXT,
@@ -76,6 +81,23 @@ def _ensure_order_events_schema(connection: sqlite3.Connection) -> None:
         )
         """
     )
+    # Existing runtime databases predate fill-level metadata. Migrate them in
+    # place instead of requiring the user to delete durable order history.
+    existing_columns = {
+        row["name"]
+        for row in connection.execute("PRAGMA table_info(order_events)").fetchall()
+    }
+    for name in (
+        "last_executed_quantity",
+        "last_executed_price",
+        "trade_id",
+        "commission",
+        "commission_asset",
+    ):
+        if name not in existing_columns:
+            connection.execute(
+                f"ALTER TABLE order_events ADD COLUMN {name} TEXT"
+            )
     connection.execute(
         """
         CREATE UNIQUE INDEX IF NOT EXISTS uq_order_events_event_id
@@ -151,6 +173,19 @@ def _event_values(event: OrderEvent) -> tuple[object, ...]:
             else None
         ),
         str(event.average_price) if event.average_price is not None else None,
+        (
+            str(event.last_executed_quantity)
+            if event.last_executed_quantity is not None
+            else None
+        ),
+        (
+            str(event.last_executed_price)
+            if event.last_executed_price is not None
+            else None
+        ),
+        event.trade_id,
+        str(event.commission) if event.commission is not None else None,
+        event.commission_asset,
         event.exchange_order_id,
         event.reconciled_state.value if event.reconciled_state is not None else None,
         event.reason,
@@ -163,9 +198,10 @@ def _append_event(connection: sqlite3.Connection, event: OrderEvent) -> None:
         """
         INSERT INTO order_events (
             client_order_id, event_id, kind, cumulative_quantity,
-            average_price, exchange_order_id, reconciled_state, reason,
-            occurred_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            average_price, last_executed_quantity, last_executed_price,
+            trade_id, commission, commission_asset, exchange_order_id,
+            reconciled_state, reason, occurred_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         _event_values(event),
     )
@@ -186,6 +222,23 @@ def _event_from_row(row: sqlite3.Row) -> OrderEvent:
             if row["average_price"] is not None
             else None
         ),
+        last_executed_quantity=(
+            Decimal(row["last_executed_quantity"])
+            if row["last_executed_quantity"] is not None
+            else None
+        ),
+        last_executed_price=(
+            Decimal(row["last_executed_price"])
+            if row["last_executed_price"] is not None
+            else None
+        ),
+        trade_id=row["trade_id"],
+        commission=(
+            Decimal(row["commission"])
+            if row["commission"] is not None
+            else None
+        ),
+        commission_asset=row["commission_asset"],
         exchange_order_id=row["exchange_order_id"],
         reconciled_state=(
             OrderState(row["reconciled_state"])

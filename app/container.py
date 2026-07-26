@@ -16,6 +16,7 @@ from adapters.binance.config import BinanceAccountMode, BinanceConfig
 from adapters.binance.gateways import (
     BinanceMarketDataGateway,
     ClassicPortfolioMarginAccountGateway,
+    ClassicPortfolioMarginFillGateway,
     ClassicPortfolioMarginMarginTradingGateway,
     ClassicPortfolioMarginTradingRouter,
     ClassicPortfolioMarginUsdMTradingGateway,
@@ -27,10 +28,12 @@ from adapters.binance.transport.rest_client import BinanceRestClient
 from adapters.discord_notifier import DiscordNotifier
 from adapters.persistence import (
     SqliteAtomicOrderPersistence,
+    SqliteFundingRepository,
     SqliteOrderEventRepository,
     SqliteOrderRepository,
 )
 from engine.execution import OrderExecutionService
+from engine.ports.fill_gateway import OrderFillGateway
 from engine.ports.trading_gateway import TradingGateway
 
 from .safety import LiveAccountGuard, LiveTradingGuard
@@ -43,10 +46,12 @@ class ApplicationContainer:
     trading_gateway: TradingGateway
     market_data_gateway: BinanceMarketDataGateway
     account_gateway: LiveAccountGuard
+    fill_gateway: OrderFillGateway
     order_event_stream: PortfolioMarginOrderEventStream
     order_repository: SqliteOrderRepository
     order_event_repository: SqliteOrderEventRepository
     atomic_order_persistence: SqliteAtomicOrderPersistence
+    funding_repository: SqliteFundingRepository
     execution_service: OrderExecutionService
     discord_notifier: DiscordNotifier
 
@@ -105,6 +110,7 @@ def build_binance_container(
     market_data = BinanceMarketDataGateway(spot_api, usd_m_api)
     margin_trading = ClassicPortfolioMarginMarginTradingGateway(portfolio_api)
     usd_m_trading = ClassicPortfolioMarginUsdMTradingGateway(portfolio_api)
+    fill_gateway = ClassicPortfolioMarginFillGateway(portfolio_api)
     raw_trading = ClassicPortfolioMarginTradingRouter(
         margin_gateway=margin_trading,
         usd_m_gateway=usd_m_trading,
@@ -126,6 +132,7 @@ def build_binance_container(
     order_repository = SqliteOrderRepository(database_path)
     event_repository = SqliteOrderEventRepository(database_path)
     atomic_persistence = SqliteAtomicOrderPersistence(database_path)
+    funding_repository = SqliteFundingRepository(database_path)
     execution_service = OrderExecutionService(
         trading,
         order_repository,
@@ -141,10 +148,12 @@ def build_binance_container(
         trading_gateway=trading,
         market_data_gateway=market_data,
         account_gateway=account,
+        fill_gateway=fill_gateway,
         order_event_stream=order_stream,
         order_repository=order_repository,
         order_event_repository=event_repository,
         atomic_order_persistence=atomic_persistence,
+        funding_repository=funding_repository,
         execution_service=execution_service,
         discord_notifier=discord_notifier,
     )

@@ -10,6 +10,7 @@ from ..api.portfolio_margin import PortfolioMarginApi
 from ..config import BinanceAccountMode
 from ..parsers.accounts import parse_account, parse_balances, parse_funding_income
 from ..parsers.positions import parse_um_positions
+from ..transport.errors import UnknownExecutionOutcome
 from .market_data_gateway import BinanceMarketDataGateway, _market_family
 
 
@@ -124,6 +125,82 @@ class ClassicPortfolioMarginAccountGateway:
 
     def is_one_way_mode(self) -> bool:
         return not bool(self._api.get_um_position_mode().get("dualSidePosition"))
+
+    def get_um_symbol_leverage(self, instrument: InstrumentId) -> int:
+        """Return the configured leverage without mutating account settings."""
+
+        if _market_family(instrument) != "UM":
+            raise ValueError("leverage is only available for USD-M instruments")
+        configurations = self._api.get_um_symbol_config(instrument.symbol)
+        matching = next(
+            (
+                item
+                for item in configurations
+                if str(item.get("symbol", "")).upper()
+                == instrument.symbol.upper()
+            ),
+            None,
+        )
+        if matching is None:
+            raise LookupError(
+                f"USD-M symbol configuration is unavailable for {instrument.symbol}"
+            )
+        try:
+            leverage = int(matching["leverage"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(
+                f"invalid leverage configuration for {instrument.symbol}"
+            ) from exc
+        if leverage <= 0:
+            raise ValueError(
+                f"invalid leverage configuration for {instrument.symbol}"
+            )
+        return leverage
+
+    def set_um_symbol_leverage(
+        self,
+        instrument: InstrumentId,
+        leverage: int,
+    ) -> int:
+        """Set one USD-M symbol's initial leverage and return Binance's value.
+
+        A transport timeout has an uncertain write outcome. Because setting a
+        fixed leverage is idempotent, reconcile it through the read-only symbol
+        configuration before deciding whether the operation failed.
+        """
+
+        if _market_family(instrument) != "UM":
+            raise ValueError("leverage is only available for USD-M instruments")
+        if isinstance(leverage, bool) or not isinstance(leverage, int):
+            raise ValueError("leverage must be a whole number")
+        if not 1 <= leverage <= 125:
+            raise ValueError("leverage must be between 1 and 125")
+        try:
+            response = self._api.change_um_initial_leverage(
+                symbol=instrument.symbol,
+                leverage=leverage,
+            )
+        except UnknownExecutionOutcome:
+            if self.get_um_symbol_leverage(instrument) == leverage:
+                return leverage
+            raise
+
+        try:
+            observed_symbol = str(response["symbol"]).upper()
+            observed_leverage = int(response["leverage"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(
+                f"invalid leverage response for {instrument.symbol}"
+            ) from exc
+        if (
+            observed_symbol != instrument.symbol.upper()
+            or observed_leverage != leverage
+        ):
+            raise ValueError(
+                f"Binance did not confirm {instrument.symbol} leverage "
+                f"at {leverage}x"
+            )
+        return observed_leverage
 
     def list_funding_income(self, **filters: object):
         return parse_funding_income(self._api.list_funding_income(**filters))

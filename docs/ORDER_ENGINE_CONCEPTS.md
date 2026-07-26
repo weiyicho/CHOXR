@@ -109,8 +109,8 @@ Compensation 本身也是一張新訂單，也會 timeout、partial fill 或失�
 ### 6. Strategy orchestration 與單張訂單 execution 必須分開
 
 `OrderExecutionService` 不知道下一張單是 Spot、perpetual、Binance 或其他
-交易所；它只處理一張 `OrderIntent`。策略 coordinator 觀察已成交量後，才決定
-是否產生下一張 intent。這讓 funding 的 maker-first 規則不會污染 engine。
+交易所；它只處理一張 `OrderIntent`。Funding worker 觀察已提交的成交事件，
+交給可替換的 policy 決定下一個 action。這讓 maker-first 規則不會污染 engine。
 
 現在的實作入口：
 
@@ -118,7 +118,9 @@ Compensation 本身也是一張新訂單，也會 timeout、partial fill 或失�
 - `engine/planning/planner.py`
 - `engine/execution/order_service.py`
 - `engine/ports/trading_gateway.py`
-- `strategies/funding_rate/entry_coordinator.py`
+- `strategies/funding_rate/hedge.py`
+- `strategies/funding_rate/execution_policy.py`
+- `strategies/funding_rate/worker.py`
 
 ## V1 invariants
 
@@ -129,13 +131,15 @@ Compensation 本身也是一張新訂單，也會 timeout、partial fill 或失�
 4. UNKNOWN order 未釐清前，不得建立可能重複曝險的新 order。
 5. Cancel pending 期間仍可能收到 fills。
 6. WebSocket 斷線時停止開新倉，但仍用 REST 管理及對帳既有部位。
-7. Funding coordinator 的 perpetual 累積成交量與已 hedge 數量必須持久化；
+7. Funding session 的 perpetual 累積成交量與已 hedge 數量必須持久化；
    replay 相同成交事件不能產生第二張 Spot 單。
 8. 重啟後先 reconciliation，不能先讓策略開新倉。
 9. 所有 transition、intent、exchange ID、fill 與 recovery action 都要可稽核。
 10. Binance UI 的 Auto Aggregate Balances 是正常資金歸集機制；API fund
     collection 只保留為需要 live flag 與人工確認的 recovery command，不能由
     單張訂單、startup 或 settlement event 自動呼叫。
+11. WebSocket gap 後除了累積成交量，也要用 REST fill history 補回成交手續費；
+    若 Spot 手續費以 base asset 收取，必須從 confirmed hedge 扣除後再算 Delta。
 
 ## 建議學習順序
 

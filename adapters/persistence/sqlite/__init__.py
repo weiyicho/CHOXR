@@ -1,5 +1,6 @@
 """SQLite-backed durable engine repositories."""
 
+from .funding_repository import SqliteFundingRepository
 from .order_repository import (
     SqliteAtomicOrderPersistence,
     SqliteOrderEventRepository,
@@ -7,6 +8,7 @@ from .order_repository import (
 )
 
 __all__ = [
+    "SqliteFundingRepository",
     "SqliteAtomicOrderPersistence",
     "SqliteOrderEventRepository",
     "SqliteOrderRepository",

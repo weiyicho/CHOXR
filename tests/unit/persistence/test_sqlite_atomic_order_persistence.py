@@ -45,6 +45,11 @@ def make_event(*, event_id: str = "event-atomic-1") -> OrderEvent:
         event_id=event_id,
         cumulative_quantity=Decimal("0.25"),
         average_price=Decimal("2000.5"),
+        last_executed_quantity=Decimal("0.25"),
+        last_executed_price=Decimal("2000.5"),
+        trade_id="trade-atomic-1",
+        commission=Decimal("0.00025"),
+        commission_asset="ETH",
         occurred_at=OCCURRED_AT,
     )
 

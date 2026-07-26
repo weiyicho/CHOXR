@@ -27,6 +27,10 @@ Sleep = Callable[[float], Awaitable[None]]
 RunSync = Callable[..., Awaitable[Any]]
 
 
+def _operator_print(message: str) -> None:
+    print(f"[FUNDING][WS] {message}", flush=True)
+
+
 class ListenKeyExpired(RuntimeError):
     pass
 
@@ -153,10 +157,12 @@ class PortfolioMarginOrderEventStream:
         reconnect_attempt = 0
         try:
             if self._listen_key is None:
+                _operator_print("requesting Binance listen key")
                 await self._start_listen_key()
             while not self._stop_requested.is_set():
                 reconnect_reason = "connection_error"
                 try:
+                    _operator_print("opening WebSocket connection")
                     reason = await self._run_connection()
                     if self._stop_requested.is_set():
                         break
@@ -190,10 +196,13 @@ class PortfolioMarginOrderEventStream:
                     continue
                 except asyncio.CancelledError:
                     raise
-                except Exception:
+                except Exception as exc:
                     # A failed connect, receive, or keepalive is retried with the
                     # same idempotent listen key until Binance reports expiry.
-                    pass
+                    _operator_print(
+                        "connection cycle failed "
+                        f"({type(exc).__name__}); scheduling reconnect"
+                    )
 
                 delay = self._reconnect_backoff_seconds[
                     min(reconnect_attempt, len(self._reconnect_backoff_seconds) - 1)
@@ -210,6 +219,7 @@ class PortfolioMarginOrderEventStream:
             await self._close_listen_key_async()
             self._queue.put_nowait(_STOP)
             self._emit_lifecycle(StreamLifecycleKind.STOPPED)
+            _operator_print("network loop stopped; listen key closed")
 
     async def _run_connection(self) -> str:
         url = self.websocket_url
@@ -277,6 +287,10 @@ class PortfolioMarginOrderEventStream:
                 return
             try:
                 await self._run_sync(self.keepalive)
+                _operator_print(
+                    "listen key keepalive succeeded; "
+                    f"next refresh in {self._keepalive_interval_seconds:g}s"
+                )
             except BinanceRequestError as exc:
                 if exc.context.code == -1125:
                     raise ListenKeyExpired("Binance listen key expired") from exc
@@ -299,10 +313,12 @@ class PortfolioMarginOrderEventStream:
 
     async def _start_listen_key(self) -> None:
         self._listen_key = await self._run_sync(self._api.start)
+        _operator_print("listen key created (value hidden)")
 
     async def _rebuild_listen_key(self) -> None:
         await self._close_listen_key_async()
         await self._start_listen_key()
+        _operator_print("expired listen key replaced (value hidden)")
         self._emit_lifecycle(
             StreamLifecycleKind.LISTEN_KEY_REBUILT,
             reason="listen_key_expired",
@@ -380,6 +396,13 @@ class PortfolioMarginOrderEventStream:
             event_id=event_id,
             cumulative_quantity=native.cumulative_quantity,
             average_price=native.average_price,
+            last_executed_quantity=native.last_executed_quantity,
+            last_executed_price=native.last_executed_price,
+            trade_id=(
+                str(native.trade_id) if native.trade_id is not None else None
+            ),
+            commission=native.commission,
+            commission_asset=native.commission_asset,
             exchange_order_id=str(native.exchange_order_id),
             reconciled_state=_reconciled_state(native.status),
             reason=native.reject_reason,

@@ -44,12 +44,13 @@ class LiveTradingGuard:
 
 
 class LiveAccountGuard:
-    """Expose account reads while gating the manual fund-collection command.
+    """Expose account reads while gating account mutations.
 
     Binance UI Auto Aggregate Balances is the normal collection mechanism for
     this account.  The API command remains available only as an explicitly
     confirmed operational recovery action; it is never part of order execution
-    or startup reconciliation.
+    or startup reconciliation. Initial-leverage changes are permitted only
+    while live trading is enabled.
     """
 
     def __init__(
@@ -74,6 +75,17 @@ class LiveAccountGuard:
 
     def is_one_way_mode(self) -> bool:
         return self._delegate.is_one_way_mode()
+
+    def get_um_symbol_leverage(self, instrument: InstrumentId) -> int:
+        return self._delegate.get_um_symbol_leverage(instrument)
+
+    def set_um_symbol_leverage(
+        self,
+        instrument: InstrumentId,
+        leverage: int,
+    ) -> int:
+        self._settings.require_live_trading()
+        return self._delegate.set_um_symbol_leverage(instrument, leverage)
 
     def list_funding_income(self, **filters: object):
         return self._delegate.list_funding_income(**filters)

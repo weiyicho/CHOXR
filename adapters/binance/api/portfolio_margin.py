@@ -308,6 +308,29 @@ class PortfolioMarginApi:
             side_effect=False,
         )
 
+    def change_um_initial_leverage(
+        self,
+        *,
+        symbol: str,
+        leverage: int,
+    ) -> dict[str, Any]:
+        if not symbol.strip():
+            raise ValueError("symbol cannot be blank")
+        if isinstance(leverage, bool) or not isinstance(leverage, int):
+            raise ValueError("leverage must be a whole number")
+        if not 1 <= leverage <= 125:
+            raise ValueError("leverage must be between 1 and 125")
+        return self._client.request(
+            "POST",
+            "/papi/v1/um/leverage",
+            {
+                "symbol": symbol.strip().upper(),
+                "leverage": leverage,
+            },
+            signed=True,
+            side_effect=True,
+        )
+
     def get_um_position_mode(self) -> dict[str, Any]:
         return self._client.request(
             "GET",

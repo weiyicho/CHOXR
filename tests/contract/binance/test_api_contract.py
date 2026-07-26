@@ -165,6 +165,60 @@ def test_account_position_and_funding_routes_are_papi_not_fapi():
     assert client.calls[-1]["params"]["incomeType"] == "FUNDING_FEE"
 
 
+def test_um_symbol_leverage_configuration_is_a_signed_read_only_query():
+    client = RecordingRestClient(
+        [[{"symbol": "ETHUSDT", "leverage": 5}]]
+    )
+
+    result = PortfolioMarginApi(client).get_um_symbol_config("ETHUSDT")
+
+    assert result == [{"symbol": "ETHUSDT", "leverage": 5}]
+    assert client.calls == [
+        {
+            "method": "GET",
+            "path": "/papi/v1/um/symbolConfig",
+            "params": {"symbol": "ETHUSDT"},
+            "signed": True,
+            "side_effect": False,
+        }
+    ]
+
+
+def test_change_um_initial_leverage_is_a_signed_side_effect():
+    client = RecordingRestClient(
+        [{"symbol": "ETHUSDT", "leverage": 5}]
+    )
+
+    result = PortfolioMarginApi(client).change_um_initial_leverage(
+        symbol="ethusdt",
+        leverage=5,
+    )
+
+    assert result == {"symbol": "ETHUSDT", "leverage": 5}
+    assert client.calls == [
+        {
+            "method": "POST",
+            "path": "/papi/v1/um/leverage",
+            "params": {"symbol": "ETHUSDT", "leverage": 5},
+            "signed": True,
+            "side_effect": True,
+        }
+    ]
+
+
+@pytest.mark.parametrize("leverage", [0, 126, 5.5, True])
+def test_change_um_initial_leverage_rejects_invalid_values(leverage):
+    client = RecordingRestClient()
+
+    with pytest.raises(ValueError, match="leverage"):
+        PortfolioMarginApi(client).change_um_initial_leverage(
+            symbol="ETHUSDT",
+            leverage=leverage,
+        )
+
+    assert client.calls == []
+
+
 def test_filtered_papi_balance_object_is_normalized_to_a_list():
     payload = {"asset": "USDT", "totalWalletBalance": "100"}
     client = RecordingRestClient([payload])

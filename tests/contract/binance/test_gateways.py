@@ -94,6 +94,21 @@ class FakePortfolioApi:
             "uniMMR": "100",
         }
 
+    def get_um_symbol_config(self, symbol=None):
+        self.calls.append({"get_um_symbol_config": symbol})
+        return [{"symbol": symbol or "ETHUSDT", "leverage": 5}]
+
+    def change_um_initial_leverage(self, *, symbol, leverage):
+        self.calls.append(
+            {
+                "change_um_initial_leverage": {
+                    "symbol": symbol,
+                    "leverage": leverage,
+                }
+            }
+        )
+        return {"symbol": symbol, "leverage": leverage}
+
     def place_um_order(self, **kwargs):
         self.calls.append(kwargs)
         if self.unknown:
@@ -341,6 +356,8 @@ def um_trade_update():
             "L": "3200",
             "ap": "3200",
             "t": 9,
+            "n": "0.0125",
+            "N": "USDT",
             "R": False,
             "ps": "BOTH",
         },
@@ -405,6 +422,71 @@ def test_account_gateway_preflight_verifies_pm_2_then_reads_papi_account():
     ) is BinanceAccountMode.CLASSIC_PORTFOLIO_MARGIN
     assert profile.calls == 1
     assert papi.calls == [{"get_account": True}]
+
+
+def test_account_gateway_reads_current_um_leverage_without_mutation():
+    papi = FakePortfolioApi()
+    market = BinanceMarketDataGateway(FakeMarketApi(), FakeMarketApi())
+    gateway = ClassicPortfolioMarginAccountGateway(papi, market)
+    instrument = InstrumentId("binance", "USD_M_PERPETUAL", "ETHUSDT")
+
+    assert gateway.get_um_symbol_leverage(instrument) == 5
+    assert papi.calls == [{"get_um_symbol_config": "ETHUSDT"}]
+
+
+def test_account_gateway_changes_um_leverage_and_validates_response():
+    papi = FakePortfolioApi()
+    market = BinanceMarketDataGateway(FakeMarketApi(), FakeMarketApi())
+    gateway = ClassicPortfolioMarginAccountGateway(papi, market)
+    instrument = InstrumentId("binance", "USD_M_PERPETUAL", "ETHUSDT")
+
+    assert gateway.set_um_symbol_leverage(instrument, 5) == 5
+    assert papi.calls == [
+        {
+            "change_um_initial_leverage": {
+                "symbol": "ETHUSDT",
+                "leverage": 5,
+            }
+        }
+    ]
+
+
+def test_account_gateway_reconciles_an_uncertain_leverage_change():
+    class AppliedThenTimedOutPortfolioApi(FakePortfolioApi):
+        def __init__(self):
+            super().__init__()
+            self.leverage = 13
+
+        def get_um_symbol_config(self, symbol=None):
+            self.calls.append({"get_um_symbol_config": symbol})
+            return [
+                {
+                    "symbol": symbol or "ETHUSDT",
+                    "leverage": self.leverage,
+                }
+            ]
+
+        def change_um_initial_leverage(self, *, symbol, leverage):
+            self.calls.append(
+                {
+                    "change_um_initial_leverage": {
+                        "symbol": symbol,
+                        "leverage": leverage,
+                    }
+                }
+            )
+            self.leverage = leverage
+            raise UnknownExecutionOutcome(
+                ErrorContext("POST", "/papi/v1/um/leverage")
+            )
+
+    papi = AppliedThenTimedOutPortfolioApi()
+    market = BinanceMarketDataGateway(FakeMarketApi(), FakeMarketApi())
+    gateway = ClassicPortfolioMarginAccountGateway(papi, market)
+    instrument = InstrumentId("binance", "USD_M_PERPETUAL", "ETHUSDT")
+
+    assert gateway.set_um_symbol_leverage(instrument, 5) == 5
+    assert papi.calls[-1] == {"get_um_symbol_config": "ETHUSDT"}
 
 
 def _margin_market_intent(client_order_id="fund-spot-1"):
@@ -607,6 +689,11 @@ def test_order_event_stream_maps_native_partial_fill_to_domain_event():
         assert event.kind is OrderEventKind.TRADE
         assert event.client_order_id == "fund-perp-1"
         assert event.cumulative_quantity == Decimal("0.025")
+        assert event.last_executed_quantity == Decimal("0.025")
+        assert event.last_executed_price == Decimal("3200")
+        assert event.trade_id == "9"
+        assert event.commission == Decimal("0.0125")
+        assert event.commission_asset == "USDT"
         assert event.reconciled_state is OrderState.PARTIALLY_FILLED
         stream.close()
 
@@ -776,7 +863,7 @@ def test_lifecycle_publishing_does_not_need_a_consumer_to_reconnect():
     asyncio.run(scenario())
 
 
-def test_network_keeps_listen_key_alive_before_sixty_minutes():
+def test_network_keeps_listen_key_alive_before_sixty_minutes(capsys):
     async def scenario():
         api = FakeUserStreamApi()
         connector = FakeConnector(
@@ -807,6 +894,10 @@ def test_network_keeps_listen_key_alive_before_sixty_minutes():
         assert "keepalive" in api.calls
 
     asyncio.run(scenario())
+    output = capsys.readouterr().out
+    assert "[FUNDING][WS] listen key created (value hidden)" in output
+    assert "[FUNDING][WS] listen key keepalive succeeded" in output
+    assert "listen-key" not in output
 
 
 def test_network_rotates_websocket_after_twelve_hours():

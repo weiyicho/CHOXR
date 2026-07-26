@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from pathlib import Path
 
 import requests
 
@@ -77,6 +79,24 @@ def test_send_embed_posts_fields_and_utc_timestamp() -> None:
     assert embed["title"] == "Order filled"
     assert embed["fields"][0]["value"] == "0.10"
     assert embed["timestamp"].endswith("+00:00")
+
+
+def test_send_picture_posts_discord_multipart_payload(tmp_path: Path) -> None:
+    image_path = tmp_path / "funding.png"
+    image_path.write_bytes(b"\x89PNG\r\n\x1a\n")
+    session = FakeSession()
+    notifier = DiscordNotifier(
+        "https://discord.com/api/webhooks/example/token",
+        session=session,
+    )
+
+    assert notifier.send_picture(image_path) is True
+
+    _, kwargs = session.calls[0]
+    payload = json.loads(kwargs["data"]["payload_json"])
+    assert payload == {"username": "CHOXR Trading Engine"}
+    assert kwargs["files"]["file"].name == str(image_path)
+    assert kwargs["timeout"] == 5.0
 
 
 def test_request_failure_returns_false() -> None:

@@ -20,6 +20,7 @@ class FundingAllocation:
     futures_margin: Decimal
     futures_notional: Decimal
     reference_price: Decimal
+    futures_reference_price: Decimal
     base_quantity: Decimal
     futures_leverage: Decimal
 
@@ -31,6 +32,7 @@ class FundingAllocation:
             "futures_margin",
             "futures_notional",
             "reference_price",
+            "futures_reference_price",
             "base_quantity",
             "futures_leverage",
         ):
@@ -41,20 +43,35 @@ class FundingAllocation:
         if self.deployed_capital > self.available_capital:
             raise ValueError("deployed capital exceeds available capital")
         if self.reference_price <= 0:
-            raise ValueError("reference price must be positive")
+            raise ValueError("Spot reference price must be positive")
+        if self.futures_reference_price <= 0:
+            raise ValueError("futures reference price must be positive")
         if self.futures_leverage <= 0:
             raise ValueError("futures leverage must be positive")
         if self.base_quantity < 0:
             raise ValueError("base quantity cannot be negative")
 
+    @property
+    def spot_quantity(self) -> Decimal:
+        """Positive Spot BUY quantity before exchange filter rounding."""
+
+        return self.base_quantity
+
+    @property
+    def futures_quantity(self) -> Decimal:
+        """Positive perpetual SELL quantity before exchange filter rounding."""
+
+        return self.base_quantity
+
 
 class FundingCapitalAllocator:
     """Split capital between Spot cash and perpetual initial margin.
 
-    With leverage ``L`` and deployable capital ``C`` the matched notional is
-    ``C * L / (L + 1)``.  The remaining ``C / (L + 1)`` is perpetual initial
-    margin.  This is funding-strategy allocation; exchange filters and final
-    quantity rounding are handled later by the generic planner.
+    For Spot ask ``Ps``, perpetual bid ``Pf``, leverage ``L`` and deployable
+    capital ``C``, matched base quantity is ``C / (Ps + Pf / L)``.  This uses
+    the same base quantity for both legs while accounting for the small price
+    difference between Spot and perpetual. Exchange filters and final quantity
+    rounding are handled later by the generic planner.
     """
 
     def allocate(
@@ -64,11 +81,17 @@ class FundingCapitalAllocator:
         capital_fraction: Decimal | int | float | str,
         futures_leverage: Decimal | int | float | str,
         reference_price: Decimal | int | float | str,
+        futures_reference_price: Decimal | int | float | str | None = None,
     ) -> FundingAllocation:
         available = _decimal(available_capital)
         fraction = _decimal(capital_fraction)
         leverage = _decimal(futures_leverage)
-        price = _decimal(reference_price)
+        spot_price = _decimal(reference_price)
+        futures_price = (
+            spot_price
+            if futures_reference_price is None
+            else _decimal(futures_reference_price)
+        )
 
         if available < 0:
             raise ValueError("available capital cannot be negative")
@@ -76,13 +99,16 @@ class FundingCapitalAllocator:
             raise ValueError("capital fraction must be between zero and one")
         if leverage <= 0:
             raise ValueError("futures leverage must be positive")
-        if price <= 0:
-            raise ValueError("reference price must be positive")
+        if spot_price <= 0:
+            raise ValueError("Spot reference price must be positive")
+        if futures_price <= 0:
+            raise ValueError("futures reference price must be positive")
 
         deployed = available * fraction
-        spot_notional = deployed * leverage / (leverage + Decimal("1"))
-        futures_margin = deployed - spot_notional
-        futures_notional = futures_margin * leverage
+        base_quantity = deployed / (spot_price + futures_price / leverage)
+        spot_notional = base_quantity * spot_price
+        futures_notional = base_quantity * futures_price
+        futures_margin = futures_notional / leverage
 
         return FundingAllocation(
             available_capital=available,
@@ -90,7 +116,8 @@ class FundingCapitalAllocator:
             spot_notional=spot_notional,
             futures_margin=futures_margin,
             futures_notional=futures_notional,
-            reference_price=price,
-            base_quantity=spot_notional / price,
+            reference_price=spot_price,
+            futures_reference_price=futures_price,
+            base_quantity=base_quantity,
             futures_leverage=leverage,
         )

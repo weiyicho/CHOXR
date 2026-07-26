@@ -11,6 +11,29 @@ def _decimal(payload: dict[str, Any], key: str, default: str = "0") -> Decimal:
     return Decimal(str(value if value not in {None, ""} else default))
 
 
+def _optional_decimal(payload: dict[str, Any], key: str) -> Decimal | None:
+    value = payload.get(key)
+    if value in {None, ""}:
+        return None
+    return Decimal(str(value))
+
+
+def _optional_trade_id(payload: dict[str, Any]) -> int | None:
+    value = payload.get("t")
+    if value in {None, ""}:
+        return None
+    trade_id = int(value)
+    return trade_id if trade_id >= 0 else None
+
+
+def _optional_string(payload: dict[str, Any], key: str) -> str | None:
+    value = payload.get(key)
+    if value in {None, ""}:
+        return None
+    normalized = str(value).strip()
+    return normalized or None
+
+
 def parse_order_event(payload: dict[str, Any]) -> OrderEventSnapshot:
     event_type = str(payload.get("e", ""))
     if event_type == "executionReport":
@@ -31,12 +54,14 @@ def parse_order_event(payload: dict[str, Any]) -> OrderEventSnapshot:
             execution_type=str(payload["x"]),
             status=str(payload["X"]),
             original_quantity=_decimal(payload, "q"),
-            last_executed_quantity=_decimal(payload, "l"),
             cumulative_quantity=executed,
-            last_executed_price=_decimal(payload, "L"),
             average_price=average,
-            trade_id=int(payload["t"]) if int(payload.get("t", -1)) >= 0 else None,
             reject_reason=str(payload["r"]) if payload.get("r") not in {None, "NONE"} else None,
+            last_executed_quantity=_optional_decimal(payload, "l"),
+            last_executed_price=_optional_decimal(payload, "L"),
+            trade_id=_optional_trade_id(payload),
+            commission=_optional_decimal(payload, "n"),
+            commission_asset=_optional_string(payload, "N"),
         )
 
     if event_type == "ORDER_TRADE_UPDATE":
@@ -56,14 +81,16 @@ def parse_order_event(payload: dict[str, Any]) -> OrderEventSnapshot:
             execution_type=str(order["x"]),
             status=str(order["X"]),
             original_quantity=_decimal(order, "q"),
-            last_executed_quantity=_decimal(order, "l"),
             cumulative_quantity=_decimal(order, "z"),
-            last_executed_price=_decimal(order, "L"),
             average_price=average if average > ZERO else None,
-            trade_id=int(order["t"]) if int(order.get("t", -1)) >= 0 else None,
             reject_reason=(
                 str(order["r"]) if order.get("r") not in {None, "NONE"} else None
             ),
+            last_executed_quantity=_optional_decimal(order, "l"),
+            last_executed_price=_optional_decimal(order, "L"),
+            trade_id=_optional_trade_id(order),
+            commission=_optional_decimal(order, "n"),
+            commission_asset=_optional_string(order, "N"),
             reduce_only=bool(order.get("R", False)),
             position_side=str(order.get("ps", "BOTH")),
         )

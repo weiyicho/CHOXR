@@ -19,7 +19,7 @@ CHOXR/
 │   └── persistence/
 ├── strategies/
 │   └── funding_rate/       opportunity scanning, capital and leg coordination
-├── app/                    configuration, monitor process and dependency wiring
+├── app/                    generic configuration, safety, runtime and wiring
 ├── tests/                  unit, contract, integration and guarded live tests
 ├── docs/
 └── legacy/                 reference-only V1; production code must not import it
@@ -52,22 +52,74 @@ generic order models.
 | `engine.risk` | Pure fail-closed pre-trade account and exposure decisions | Funding-rate thresholds, exchange I/O |
 | `engine.execution` | Submit, event application, cancellation, reconciliation, recovery | Which leg should trade first |
 | `adapters.binance` | Signing, endpoints, payload parsing, Binance error semantics | Trading decisions |
-| `strategies.funding_rate` | Read-only opportunity filtering, capital split, maker-perpetual/taker-Spot coordination, strategy unwind | Generic order lifecycle |
-| `app` | Settings, public funding monitor, dependency construction, process lifecycle | Domain calculations |
+| `strategies.funding_rate` | Read-only opportunity filtering and monitor, capital split, maker-perpetual/taker-Spot coordination, strategy unwind | Generic order lifecycle |
+| `app` | Settings, shared dependency construction, process lifecycle | Domain calculations |
 
 ## Read-only funding monitor
 
-`app.funding_rate_monitor` is intentionally separate from the private account
-and execution runtime. It builds only public Binance Spot/USD-M market-data
-clients and the optional outbound Discord notifier. The scan uses public GET
-responses to select liquid positive-funding USDT perpetuals, then asks the
-existing market-data gateway for executable Spot ask and perpetual bid prices
-for the ranked candidates.
+`strategies.funding_rate.monitor` is intentionally separate from the private
+account and execution runtime. It builds only public Binance Spot/USD-M
+market-data clients and the optional outbound Discord notifier. The scan uses
+public GET responses to select liquid positive-funding USDT perpetuals, then
+asks the existing market-data gateway for executable Spot ask and perpetual bid
+prices for the ranked candidates.
 
 The monitor never constructs `PortfolioMarginApi`, an order-event stream, or an
 `OrderExecutionService`. Its scanner logic is a pure function in
 `strategies.funding_rate.scanner`; process timing, error backoff, Discord
-deduplication and heartbeat behavior remain in the application layer.
+PNG-table rendering and error throttling live in the monitor entry point.
+Continuous mode uses one hourly interval for both scanning and successful
+Discord reports. After each scan, the monitor selects the highest-ranked
+candidate with executable prices, calls `FundingCapitalAllocator` with the Spot
+ask and perpetual bid, and atomically replaces
+`strategies/funding_rate/runtime/order_plan.json`. A no-candidate scan overwrites
+the file with `NO_CANDIDATE` instead of leaving a stale symbol behind.
+
+The JSON contains a decision snapshot and equal pre-rounding base quantities
+for a Spot BUY and perpetual SELL. It is not an `OrderIntent`: exchange filter
+rounding, pre-trade risk approval, private API access and submission remain
+outside this monitor.
+
+`strategies.funding_rate.order` is the explicit manual execution boundary for
+testing each leg. It loads only a fresh `READY` plan, verifies the saved funding
+timestamp, fetches current account/rules/book state, and composes the existing
+maker-price, quantity-normalization, pre-trade-risk and execution services.
+Perpetual preparation fails when the position is non-flat or another order is
+open. The preview reports a leverage difference; the gated live submit updates
+and reads back the symbol leverage before placing the maker. Spot preparation
+accepts an explicit test quantity no larger than the allocation. Preview is the
+default; live submission remains behind both CLI confirmation and
+`LiveTradingGuard`.
+
+This manual harness deliberately does not treat a direct Spot test as a
+perpetual hedge. `strategies.funding_rate.main` owns the automatic strategy
+sequence: fresh scan, maker preparation, WebSocket synchronization, maker
+submission, committed fill consumption, and Spot hedging. Generic process
+mechanics remain in `app.runtime`; the strategy imports and composes them rather
+than putting Funding-specific sequencing in `app/`.
+
+## Funding execution components
+
+Funding-specific economics stay inside the strategy package without leaking
+order sequence into the generic engine:
+
+- `allocation.py` computes matched pre-filter base quantities from capital,
+  Spot price, perpetual price and leverage.
+- `hedge.py` is a pure calculator for confirmed net Spot, pending reservations,
+  uncovered delta, tradable quantity and dust.
+- `execution_policy.py` decides whether to submit a hedge, cancel/reconcile the
+  maker, mark the session open, pause or enter recovery.
+- `session.py` defines durable funding sessions and idempotent actions.
+- `worker.py` reloads committed order truth, invokes the calculator/policy and
+  dispatches persisted actions with stable client IDs. Before restart recovery
+  it also backfills missing Spot commission events through the read-only fill
+  gateway, so a WebSocket gap cannot overstate net Spot exposure. Fee-incomplete
+  terminal fills remain `HEDGING` and are retried periodically instead of being
+  marked `OPEN`.
+
+The first policy is perpetual-maker / Spot-taker. A future Spot-maker or
+simultaneous policy can replace it without changing the calculator, engine or
+Binance adapter.
 
 ## Runtime safety defaults
 
@@ -87,6 +139,8 @@ deduplication and heartbeat behavior remain in the application layer.
   unresolved orders.
 - REST reconciliation and WebSocket events are serialized per client order ID;
   unrelated orders do not share one global execution lock.
+- Restart recovery reconciles order snapshots first, then REST fill history,
+  and only then resumes durable funding actions.
 - SQLite production wiring atomically commits each normalized event with its
   materialized order snapshot, so a crash cannot persist only half a transition.
 - Latency-sensitive execution paths use `ExecutionTimingTrace` backed by a
